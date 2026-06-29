@@ -13,13 +13,17 @@ const socket = io(BACKEND_URL, {
 socket.on("connect", () => {
   console.log("[Socket] Connected:", socket.id);
 
-  // Re-join session automatically after reconnect
+  // Auto-rejoin session on reconnect (e.g. after backend restart)
   const token = sessionStorage.getItem("token");
   const sessionCode = sessionStorage.getItem("session_code");
   if (token && sessionCode) {
+    console.log("[Socket] Auto-rejoining session:", sessionCode);
     socket.emit("join_session", { session_code: sessionCode, token });
-    console.log("[Socket] Re-joined session:", sessionCode);
   }
+});
+
+socket.on("join_confirmed", (data) => {
+  console.log("[Socket] Join confirmed for session:", data.session_code, "role:", data.role);
 });
 
 socket.on("disconnect", (reason) => {

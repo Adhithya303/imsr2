@@ -60,8 +60,15 @@ const SIZE_CLASSES = {
   md: "text-2xl font-bold font-mono",
 };
 
-export default function VitalsPanel({ onVitalClick }) {
+const COMPACT_SIZE_CLASSES = {
+  xl: "text-2xl font-bold font-mono",
+  lg: "text-xl font-bold font-mono",
+  md: "text-lg font-bold font-mono",
+};
+
+export default function VitalsPanel({ onVitalClick, compact }) {
   const state = useMonitorStore();
+  const classes = compact ? COMPACT_SIZE_CLASSES : SIZE_CLASSES;
 
   return (
     <div className="vitals-panel">
@@ -91,7 +98,7 @@ export default function VitalsPanel({ onVitalClick }) {
                   {item.label}
                 </span>
                 <span
-                  className={SIZE_CLASSES[item.size]}
+                  className={classes[item.size]}
                   style={{ color: group.color }}
                 >
                   {displayVal}

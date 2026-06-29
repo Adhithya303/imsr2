@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import useMonitorStore from "../../store/monitorStore";
 import socket from "../../socket";
+import EyesPanel from "../monitor/EyesPanel";
 
 export default function SimulationControl({ sessionCode }) {
+  const navigate = useNavigate();
   const [elapsed, setElapsed] = useState(0);
   const [events, setEvents] = useState([]);
   const [trendData, setTrendData] = useState([]);
@@ -65,9 +68,16 @@ export default function SimulationControl({ sessionCode }) {
 
   const handleAddComment = () => {
     if (!comment.trim()) return;
+    const text = comment.trim();
+    // Log to event log (persisted in DB, shown in instructor's event panel)
     socket.emit("add_event_log", {
       session_code: sessionCode,
-      event: comment.trim(),
+      event: text,
+    });
+    // Also broadcast as faculty_comment so students see it in real-time
+    socket.emit("faculty_comment", {
+      session_code: sessionCode,
+      comment: text,
     });
     setComment("");
     setShowComment(false);
@@ -76,14 +86,21 @@ export default function SimulationControl({ sessionCode }) {
   const handleEndSession = async () => {
     if (!window.confirm("End this simulation session?")) return;
     const token = sessionStorage.getItem("token");
-    await fetch(
-      `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8000"}/session/${sessionCode}/end`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    );
-    window.location.reload();
+    try {
+      await fetch(
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8000"}/session/${sessionCode}/end`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+    } catch (e) {
+      console.error("End session failed", e);
+    }
+    // Session ended event will be received; navigate to login
+    sessionStorage.clear();
+    socket.disconnect();
+    navigate("/");
   };
 
   // Mini trend chart using canvas
@@ -186,6 +203,11 @@ export default function SimulationControl({ sessionCode }) {
           <button className="btn-classic btn-sm" onClick={() => setShowComment(false)}>✕</button>
         </div>
       )}
+
+      {/* Eyes Panel */}
+      <div style={{ marginTop: "4px" }}>
+        <EyesPanel editable={true} sessionCode={sessionCode} />
+      </div>
 
       <button className="btn-classic btn-end" onClick={handleEndSession}>
         End Session
