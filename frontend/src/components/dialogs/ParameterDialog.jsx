@@ -21,7 +21,7 @@ export default function ParameterDialog({ field, spec, sessionCode, onClose }) {
   // Local state for each field being edited
   const [values, setValues] = useState({});
   const [transferTime, setTransferTime] = useState(0);
-  const [transferFn, setTransferFn] = useState("immediate");
+  const [transferFn, setTransferFn] = useState("linear");
 
   // Initialize local values from store
   useEffect(() => {
@@ -39,14 +39,17 @@ export default function ParameterDialog({ field, spec, sessionCode, onClose }) {
 
   const handleApply = () => {
     allFields.forEach((f) => {
-      if (values[f] !== useMonitorStore.getState()[f]) {
-        socket.emit("update_parameter", {
-          field: f,
-          value: values[f],
-          transfer_time_seconds: transferTime,
-          transfer_function: transferFn,
-        });
+      // Optimistic local update only for instant changes
+      // For timed transfers let the server interpolation drive the graph
+      if (transferTime === 0) {
+        useMonitorStore.getState().updateParam(f, values[f]);
       }
+      socket.emit("update_parameter", {
+        field: f,
+        value: values[f],
+        transfer_time_seconds: transferTime,
+        transfer_function: transferFn,
+      });
     });
   };
 
@@ -172,7 +175,6 @@ export default function ParameterDialog({ field, spec, sessionCode, onClose }) {
                     onChange={(e) => setTransferFn(e.target.value)}
                     className="dialog-select"
                   >
-                    <option value="immediate">Immediate</option>
                     <option value="linear">Linear</option>
                     <option value="smooth">Smooth (ease)</option>
                   </select>

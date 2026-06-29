@@ -10,8 +10,12 @@ import CardiacControls from "../components/instructor/CardiacControls";
 import SimulationControl from "../components/instructor/SimulationControl";
 import BodyDiagram from "../components/instructor/BodyDiagram";
 import ParameterDialog from "../components/dialogs/ParameterDialog";
+import SetArterialBP from "../components/dialogs/SetArterialBP";
+import SetSpO2 from "../components/dialogs/SetSpO2";
+import SetPeripheralTemp from "../components/dialogs/SetPeripheralTemp";
 
 const API = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+
 
 export default function InstructorDashboard() {
   const [sessionCode, setSessionCode] = useState("");
@@ -54,27 +58,44 @@ export default function InstructorDashboard() {
 
     initSession();
 
-    socket.on("state_update", (state) => setFullState(state));
-    socket.on("alarm_update", (data) =>
-      useMonitorStore.setState({ alarms: data.alarms })
-    );
-    socket.on("rhythm_change", (data) => setFullState(data));
-    socket.on("session_event", (entry) => appendEvent(entry));
-    socket.on("session_ended", () => setSessionEnded());
-    socket.on("error", (data) => console.error("[SIO Error]", data.message));
+    const handleStateUpdate = (state) => setFullState(state);
+    const handleAlarmUpdate = (data) => useMonitorStore.setState({ alarms: data.alarms });
+    const handleRhythmChange = (data) => setFullState(data);
+    const handleSessionEvent = (entry) => appendEvent(entry);
+    const handleSessionEnded = () => setSessionEnded();
+    const handleError = (data) => console.error("[SIO Error]", data.message);
+
+    socket.on("state_update", handleStateUpdate);
+    socket.on("alarm_update", handleAlarmUpdate);
+    socket.on("rhythm_change", handleRhythmChange);
+    socket.on("session_event", handleSessionEvent);
+    socket.on("session_ended", handleSessionEnded);
+    socket.on("error", handleError);
 
     return () => {
-      socket.off("state_update");
-      socket.off("alarm_update");
-      socket.off("rhythm_change");
-      socket.off("session_event");
-      socket.off("session_ended");
-      socket.off("error");
+      socket.off("state_update", handleStateUpdate);
+      socket.off("alarm_update", handleAlarmUpdate);
+      socket.off("rhythm_change", handleRhythmChange);
+      socket.off("session_event", handleSessionEvent);
+      socket.off("session_ended", handleSessionEnded);
+      socket.off("error", handleError);
     };
   }, [navigate, setFullState, appendEvent, setSessionEnded]);
 
+  // Map vital/channel key to dialog type
+  const DIALOG_MAP = {
+    abp: "abp",
+    ABP_sys: "abp",
+    ABP_dia: "abp",
+    spo2: "spo2",
+    SpO2: "spo2",
+    Tperi: "tperi",
+    tperi: "tperi",
+  };
+
   const handleVitalClick = useCallback((key) => {
-    setOpenDialog(key);
+    const mapped = DIALOG_MAP[key] || key;
+    setOpenDialog(mapped);
   }, []);
 
   const handleLogout = () => {
@@ -156,7 +177,7 @@ export default function InstructorDashboard() {
                 <AlarmBar />
                 <div className="mini-monitor-body">
                   <div className="mini-waveforms">
-                    <WaveformCanvas />
+                    <WaveformCanvas onChannelClick={handleVitalClick} />
                   </div>
                   <div className="mini-vitals">
                     <VitalsPanel onVitalClick={handleVitalClick} />
@@ -174,8 +195,18 @@ export default function InstructorDashboard() {
         </div>
       </div>
 
-      {/* Universal Parameter Dialog */}
-      {openDialog && paramSpec && (
+      {/* Specialized dialogs — ABP, SpO2, Tperi */}
+      {openDialog === "abp" && (
+        <SetArterialBP onClose={() => setOpenDialog(null)} />
+      )}
+      {openDialog === "spo2" && (
+        <SetSpO2 onClose={() => setOpenDialog(null)} />
+      )}
+      {openDialog === "tperi" && (
+        <SetPeripheralTemp onClose={() => setOpenDialog(null)} />
+      )}
+      {/* Generic dialog for other params */}
+      {openDialog && !["abp", "spo2", "tperi"].includes(openDialog) && paramSpec && (
         <ParameterDialog
           field={openDialog}
           spec={paramSpec}

@@ -75,7 +75,7 @@ export default function SimulationControl({ sessionCode }) {
 
   const handleEndSession = async () => {
     if (!window.confirm("End this simulation session?")) return;
-    const token = localStorage.getItem("token");
+    const token = sessionStorage.getItem("token");
     await fetch(
       `${import.meta.env.VITE_BACKEND_URL || "http://localhost:8000"}/session/${sessionCode}/end`,
       {

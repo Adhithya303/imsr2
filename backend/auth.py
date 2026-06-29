@@ -9,7 +9,8 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 
-from database import users_collection
+from database import get_db_pool
+import aiomysql
 
 JWT_SECRET = os.getenv("JWT_SECRET", "mysecret123")
 JWT_ALGORITHM = "HS256"
@@ -48,14 +49,23 @@ def decode_token(token: str) -> dict:
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> dict:
-    """FastAPI dependency that returns the current user document."""
+    """FastAPI dependency that returns the current user dict."""
     payload = decode_token(credentials.credentials)
     username = payload.get("sub")
     if not username:
         raise HTTPException(status_code=401, detail="Invalid token payload")
-    user = await users_collection.find_one({"username": username})
+    
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute("SELECT * FROM users WHERE username = %s", (username,))
+            user = await cur.fetchone()
+
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    
+    # ensure returned dict behaves like MongoDB document (with id)
+    user["_id"] = user["id"]
     return user
 
 

@@ -1,39 +1,78 @@
-"""MongoDB async connection via Motor -- loads from .env, supports Atlas."""
+"""MySQL async connection via aiomysql -- loads from .env."""
 
 import os
 from dotenv import load_dotenv
-from motor.motor_asyncio import AsyncIOMotorClient
+import aiomysql
+import json
 
 load_dotenv()
 
-MONGO_URL = os.getenv("MONGO_URL")
-DB_NAME = os.getenv("DB_NAME", "sim_monitor")
+MYSQL_HOST = os.getenv("MYSQL_HOST", "localhost")
+MYSQL_PORT = int(os.getenv("MYSQL_PORT", 3306))
+MYSQL_USER = os.getenv("MYSQL_USER", "root")
+MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "Adhianu@2886")
+DB_NAME = os.getenv("DB_NAME", "imsr")
 
-# Determine if using Atlas (contains '+srv')
-if MONGO_URL and "+srv" in MONGO_URL:
-    # Use TLS but allow invalid certificates for dev
-    client = AsyncIOMotorClient(MONGO_URL, tls=True, tlsInsecure=True)
-else:
-    # Fallback to local MongoDB without TLS
-    client = AsyncIOMotorClient(MONGO_URL or "mongodb://localhost:27017")
-
-db = client[DB_NAME]
-
-# Collections
-users_collection = db["users"]
-sessions_collection = db["sessions"]
-monitor_state_collection = db["monitor_state"]
-
+# Connection pool
+pool = None
 
 async def init_db():
-    """Create indexes and collections on startup."""
-    existing = await db.list_collection_names()
-    for col_name in ["users", "sessions", "monitor_state"]:
-        if col_name not in existing:
-            await db.create_collection(col_name)
-            print(f"[DB] Created collection: {col_name}")
+    """Create database and tables on startup."""
+    global pool
+    
+    # Connect without DB to create it
+    temp_conn = await aiomysql.connect(
+        host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD
+    )
+    async with temp_conn.cursor() as cur:
+        await cur.execute(f"CREATE DATABASE IF NOT EXISTS `{DB_NAME}`")
+    temp_conn.close()
 
-    await users_collection.create_index("username", unique=True)
-    await sessions_collection.create_index("session_code", unique=True)
-    await monitor_state_collection.create_index("session_id", unique=True)
-    print("[DB] Connected to MongoDB Atlas -- indexes ensured")
+    # Create connection pool
+    pool = await aiomysql.create_pool(
+        host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD,
+        db=DB_NAME, autocommit=True
+    )
+
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            # Users table
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    username VARCHAR(255) UNIQUE NOT NULL,
+                    password_hash VARCHAR(255) NOT NULL,
+                    role VARCHAR(50) NOT NULL,
+                    created_at DATETIME NOT NULL
+                )
+            """)
+
+            # Sessions table
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS sessions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    session_code VARCHAR(50) UNIQUE NOT NULL,
+                    created_by INT NOT NULL,
+                    started_at DATETIME NOT NULL,
+                    ended_at DATETIME,
+                    is_active BOOLEAN NOT NULL DEFAULT 1,
+                    event_log JSON,
+                    history JSON,
+                    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
+
+            # Monitor State table
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS monitor_state (
+                    session_id INT PRIMARY KEY,
+                    state_data JSON,
+                    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+                )
+            """)
+            
+    print(f"[DB] Connected to local MySQL — database: {DB_NAME}")
+
+async def get_db_pool():
+    global pool
+    return pool

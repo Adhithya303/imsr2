@@ -18,10 +18,10 @@
   --outline: #84967e;
   --outline-variant: #3b4b38;
 
-  --primary: #00ff44;
-  --primary-dim: #00e63c;
-  --primary-container: #007118;
-  --on-primary: #003908;
+  --primary: #1a56db;
+  --primary-dim: #1e40af;
+  --primary-container: #1e3a8a;
+  --on-primary: #ffffff;
 
   --ecg-green: #00FF00;
   --spo2-yellow: #FFFF00;
@@ -57,50 +57,50 @@ html, body, #root {
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   LOGIN PAGE
+   LOGIN PAGE  — White Professional Theme
    ══════════════════════════════════════════════════════════════════ */
+
+/* Page background: light gray with subtle dot grid (like reference) */
 .login-page {
   width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(ellipse at 30% 40%, #0a1a0a 0%, #000 70%);
+  background-color: #e8eaf0;
+  background-image: radial-gradient(circle, #b0b8c8 1px, transparent 1px);
+  background-size: 22px 22px;
   position: relative;
   overflow: hidden;
 }
-.login-page::before {
-  content: '';
-  position: absolute; inset: 0;
-  background:
-    repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,68,0.015) 2px, rgba(0,255,68,0.015) 4px);
-  pointer-events: none;
-}
 
-.login-container { position: relative; z-index: 1; width: 400px; }
+.login-container { position: relative; z-index: 1; width: 380px; }
 
+/* macOS-style traffic-light title bar */
 .login-header-bar {
   display: flex; gap: 6px; padding: 10px 14px;
-  background: var(--surface-container-high);
-  border-radius: 10px 10px 0 0;
-  border: 1px solid var(--outline-variant);
+  background: #f0f2f5;
+  border-radius: 12px 12px 0 0;
+  border: 1px solid #d0d4dc;
   border-bottom: none;
 }
 .login-dot { width: 10px; height: 10px; border-radius: 50%; }
-.login-dot.red { background: #ff5f57; }
+.login-dot.red    { background: #ff5f57; }
 .login-dot.yellow { background: #ffbd2e; }
-.login-dot.green { background: #28c840; }
+.login-dot.green  { background: #28c840; }
 
+/* White card with clean shadow */
 .login-card {
-  background: var(--surface-container);
-  border: 1px solid var(--outline-variant);
+  background: #ffffff;
+  border: 1px solid #d0d4dc;
   border-top: none;
-  border-radius: 0 0 10px 10px;
-  padding: 32px;
+  border-radius: 0 0 12px 12px;
+  padding: 36px 32px 28px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.10), 0 2px 8px rgba(0,0,0,0.06);
 }
 
 .login-logo {
-  display: flex; justify-content: center; margin-bottom: 16px;
+  display: flex; justify-content: center; margin-bottom: 14px;
 }
 .login-logo svg {
-  filter: drop-shadow(0 0 12px rgba(0,255,68,0.4));
+  filter: drop-shadow(0 0 8px rgba(26,86,219,0.35));
 }
 
 .login-title {
@@ -109,52 +109,69 @@ html, body, #root {
   letter-spacing: -0.02em; margin-bottom: 4px;
 }
 .login-subtitle {
-  text-align: center; font-size: 13px; color: var(--on-surface-muted);
-  margin-bottom: 28px; letter-spacing: 0.05em; text-transform: uppercase;
+  text-align: center; font-size: 12px; color: #6b7280;
+  margin-bottom: 28px; letter-spacing: 0.06em; text-transform: uppercase;
 }
 
-.login-form { display: flex; flex-direction: column; gap: 16px; }
+.login-form { display: flex; flex-direction: column; gap: 14px; }
 
-.input-group { display: flex; flex-direction: column; gap: 6px; }
+.input-group { display: flex; flex-direction: column; gap: 5px; }
 .input-label {
   font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
-  color: var(--on-surface-muted); text-transform: uppercase;
+  color: #6b7280; text-transform: uppercase;
 }
 .login-input {
-  background: var(--surface-dim); border: 1px solid var(--outline-variant);
-  color: var(--on-surface); padding: 10px 14px; font-size: 14px;
-  font-family: var(--font-mono); outline: none; transition: border-color 0.2s;
+  background: #f8f9fb;
+  border: 1.5px solid #d1d5db;
+  color: #111827;
+  padding: 10px 14px; font-size: 14px;
+  font-family: var(--font-mono); outline: none;
+  border-radius: 6px;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
-.login-input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(0,255,68,0.15); }
-.login-input::placeholder { color: #555; }
+.login-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(26,86,219,0.12);
+  background: #fff;
+}
+.login-input::placeholder { color: #9ca3af; }
 
 .session-code-input {
   text-align: center; font-size: 24px; letter-spacing: 0.2em; font-weight: 700;
 }
 
 .login-error {
-  background: rgba(204,0,0,0.15); border: 1px solid var(--alarm-red);
-  color: #ffb4ab; padding: 8px 12px; font-size: 13px;
+  background: rgba(220,38,38,0.08); border: 1.5px solid #fca5a5;
+  color: #b91c1c; padding: 8px 12px; font-size: 13px; border-radius: 6px;
 }
 
 .login-btn {
-  background: var(--primary); color: var(--on-primary);
+  background: var(--primary); color: #ffffff;
   border: none; padding: 12px; font-size: 14px; font-weight: 700;
   font-family: var(--font-ui); cursor: pointer; text-transform: uppercase;
-  letter-spacing: 0.05em; transition: all 0.2s;
+  letter-spacing: 0.06em; border-radius: 6px;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
 }
-.login-btn:hover { background: var(--primary-dim); box-shadow: 0 0 20px rgba(0,255,68,0.3); }
-.login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.login-btn:hover {
+  background: var(--primary-dim);
+  box-shadow: 0 4px 16px rgba(26,86,219,0.35);
+  transform: translateY(-1px);
+}
+.login-btn:active { transform: translateY(0); }
+.login-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
 .login-hint {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
-  font-size: 11px; color: #555; margin-top: 8px;
+  font-size: 11px; color: #9ca3af; margin-top: 8px;
 }
 .login-hint code {
-  font-family: var(--font-mono); color: var(--on-surface-muted); font-size: 11px;
+  font-family: var(--font-mono); color: #6b7280; font-size: 11px;
 }
 
-.session-prompt-text { color: var(--on-surface-muted); font-size: 13px; margin-bottom: 16px; text-align: center; }
+.session-prompt-text {
+  color: #6b7280; font-size: 13px; margin-bottom: 16px; text-align: center;
+}
+
 
 /* ══════════════════════════════════════════════════════════════════
    STUDENT MONITOR
@@ -512,3 +529,242 @@ html, body, #root {
 
 /* ── Selection ─────────────────────────────────────────────────── */
 ::selection { background: rgba(0,255,68,0.25); color: #fff; }
+
+/* ══════════════════════════════════════════════════════════════════
+   SIMULATOR-STYLE DIALOGS  (Set ABP / Set SpO2 / Set Tperi)
+   Matches the classic clinical sim software look from the reference images.
+   ══════════════════════════════════════════════════════════════════ */
+
+.sim-dialog-overlay {
+  position: fixed; inset: 0; z-index: 9000;
+  background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+}
+
+.sim-dialog {
+  background: #d4d0c8;          /* Classic WinXP-style silver */
+  border: 2px solid #808080;
+  border-top-color: #ffffff;
+  border-left-color: #ffffff;
+  min-width: 340px;
+  max-width: 440px;
+  width: 100%;
+  box-shadow: 4px 4px 12px rgba(0,0,0,0.6);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: #000;
+  border-radius: 2px;
+}
+
+.sim-dialog-narrow {
+  min-width: 300px;
+  max-width: 360px;
+}
+
+/* Title bar — dark blue like a classic Windows dialog */
+.sim-dialog-titlebar {
+  background: linear-gradient(90deg, #000080, #1084d0);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+
+.sim-dialog-close {
+  background: #d4d0c8;
+  border: 1px solid #808080;
+  border-top-color: #fff;
+  border-left-color: #fff;
+  color: #000;
+  font-size: 11px;
+  width: 16px; height: 14px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.sim-dialog-close:hover { background: #ff4444; color: #fff; }
+
+.sim-dialog-body {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Fieldset with classic inset border */
+.sim-fieldset {
+  border: 1px solid #808080;
+  border-top-color: #808080;
+  padding: 6px 8px 8px;
+  background: #c8c8c0;
+  border-radius: 0;
+}
+.sim-fieldset legend {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 4px;
+  color: #000;
+}
+.sim-fieldset-cyanosis {
+  background: #bcbcb4;
+}
+
+/* From / To layout — mirrors the simulator UI exactly */
+.sim-from-to {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.sim-from, .sim-to {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 52px;
+}
+
+.sim-from-label, .sim-to-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #222;
+}
+.sim-from-sub {
+  font-size: 10px;
+  color: #555;
+  white-space: nowrap;
+}
+
+.sim-from-value {
+  background: #fff;
+  border: 1px inset #808080;
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  min-width: 44px;
+  text-align: center;
+  margin-top: 2px;
+}
+
+.sim-to-input-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.sim-number-input {
+  width: 52px;
+  background: #fff;
+  border: 1px inset #808080;
+  padding: 2px 4px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  color: #000;
+  outline: none;
+}
+.sim-number-input:focus { border-color: #000080; }
+
+.sim-unit {
+  font-size: 12px;
+  color: #333;
+}
+
+.sim-slider-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+}
+
+.sim-slider {
+  width: 100%;
+  accent-color: #000080;
+  cursor: pointer;
+}
+
+/* Coupled checkbox */
+.sim-coupled-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+/* Transfer controls */
+.sim-transfer-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+.sim-transfer-label {
+  font-size: 12px;
+  min-width: 110px;
+  color: #222;
+}
+.sim-select {
+  background: #fff;
+  border: 1px inset #808080;
+  color: #000;
+  font-size: 12px;
+  padding: 2px 4px;
+  outline: none;
+  cursor: pointer;
+}
+.sim-select-fn {
+  min-width: 100px;
+}
+
+/* Sub-section label inside a fieldset (Cyanosis start, severe) */
+.sim-sub-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #333;
+  margin-top: 4px;
+}
+
+/* Dialog footer with OK / Cancel buttons */
+.sim-dialog-footer {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 12px 10px;
+  background: #d4d0c8;
+  border-top: 1px solid #808080;
+}
+
+.sim-btn {
+  background: #d4d0c8;
+  border: 1px solid #808080;
+  border-top-color: #fff;
+  border-left-color: #fff;
+  padding: 3px 24px;
+  font-size: 12px;
+  font-family: var(--font-ui);
+  color: #000;
+  cursor: pointer;
+  min-width: 72px;
+  border-radius: 0;
+}
+.sim-btn:hover {
+  background: #e0dcd4;
+}
+.sim-btn:active {
+  border-top-color: #808080;
+  border-left-color: #808080;
+  border-bottom-color: #fff;
+  border-right-color: #fff;
+  padding: 4px 24px 2px;
+}
+

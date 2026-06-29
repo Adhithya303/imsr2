@@ -1,0 +1,1637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>High-Fidelity Clinical Patient Monitor Simulation</title>
+  
+  <!-- Google Fonts for Medical Monitor Typographic Style -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  
+  <!-- Smoothie Charts Library CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/smoothie/1.34.0/smoothie.min.js"></script>
+
+  <style>
+    :root {
+      --color-ecg: #00ff00;
+      --color-abp: #ff0000;
+      --color-co2: #ffffff;
+      --color-spo2: #ffff00;
+      --color-pap: #ff00ff;
+      
+      --bg-dark: #000000;
+      --bg-panel: #0d0d0d;
+      --bg-card: rgba(26, 26, 26, 0.75);
+      --border-color: #222222;
+      --font-digital: 'Share Tech Mono', 'Orbitron', monospace;
+      --font-ui: 'Outfit', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: #ffffff;
+      font-family: var(--font-ui);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Outer bezel of the monitor */
+    .monitor-bezel {
+      width: 1100px;
+      background-color: #151515;
+      border: 12px solid #282828;
+      border-radius: 12px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9), inset 0 0 10px rgba(0,0,0,0.8);
+      padding: 10px;
+      margin-bottom: 25px;
+      position: relative;
+    }
+
+    /* Screen simulation */
+    .monitor-screen {
+      background-color: #000000;
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* CRT Bloom scanline overlay */
+    .monitor-screen::after {
+      content: " ";
+      display: block;
+      position: absolute;
+      top: 0; left: 0; bottom: 0; right: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+      background-size: 100% 4px;
+      z-index: 99;
+      pointer-events: none;
+      opacity: 0.45;
+    }
+
+    /* Header Panel */
+    .monitor-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: #080808;
+      border-bottom: 2px solid var(--border-color);
+      padding: 10px 15px;
+      font-size: 0.9rem;
+      letter-spacing: 1px;
+    }
+
+    .patient-info {
+      display: flex;
+      gap: 15px;
+      align-items: center;
+    }
+
+    .patient-info span.label {
+      color: #888;
+      font-weight: 300;
+    }
+
+    .patient-info strong {
+      color: #eee;
+      font-weight: 600;
+    }
+
+    .divider {
+      color: #444;
+    }
+
+    .status-panel {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .status-indicator {
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 0.8rem;
+    }
+
+    .status-indicator.normal {
+      color: var(--color-ecg);
+      background-color: rgba(0, 255, 0, 0.1);
+      border: 1px solid rgba(0, 255, 0, 0.3);
+    }
+
+    .status-indicator.warning {
+      color: var(--color-spo2);
+      background-color: rgba(255, 255, 0, 0.1);
+      border: 1px solid rgba(255, 255, 0, 0.3);
+      animation: flash-border 1.5s infinite;
+    }
+
+    .status-indicator.danger {
+      color: var(--color-abp);
+      background-color: rgba(255, 0, 0, 0.1);
+      border: 1px solid rgba(255, 0, 0, 0.3);
+      animation: flash-border 0.8s infinite;
+    }
+
+    @keyframes flash-border {
+      0%, 100% { border-color: rgba(255, 0, 0, 0.3); }
+      50% { border-color: rgba(255, 0, 0, 0.9); }
+    }
+
+    .monitor-time {
+      font-family: var(--font-digital);
+      color: #888;
+      font-size: 1.1rem;
+    }
+
+    .mute-btn {
+      background: none;
+      border: 1px solid #444;
+      color: #aaa;
+      padding: 2px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+    }
+
+    .mute-btn:hover {
+      background-color: #222;
+      color: #fff;
+      border-color: #666;
+    }
+
+    .mute-btn.active {
+      color: var(--color-spo2);
+      border-color: var(--color-spo2);
+      background-color: rgba(255, 255, 0, 0.05);
+    }
+
+    /* Waveform Rows Stack */
+    .waveform-stack {
+      display: flex;
+      flex-direction: column;
+      background-color: #000000;
+    }
+
+    .waveform-row {
+      display: flex;
+      align-items: stretch;
+      border-bottom: 1px solid var(--border-color);
+      height: 100px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .waveform-row:last-child {
+      border-bottom: none;
+    }
+
+    /* Color Specific Label & Readouts */
+    .row-ecg { color: var(--color-ecg); }
+    .row-abp { color: var(--color-abp); }
+    .row-co2 { color: var(--color-co2); }
+    .row-spo2 { color: var(--color-spo2); }
+    .row-pap { color: var(--color-pap); }
+
+    /* Left Label Column */
+    .waveform-label {
+      width: 90px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding-left: 15px;
+      border-right: 1px solid var(--border-color);
+      background-color: rgba(0, 0, 0, 0.3);
+      font-weight: 700;
+      user-select: none;
+    }
+
+    .waveform-label .title {
+      font-size: 1.1rem;
+      letter-spacing: 0.5px;
+    }
+
+    .waveform-label .subtitle {
+      font-size: 0.75rem;
+      color: #555;
+      font-weight: 400;
+      margin-top: 2px;
+    }
+
+    /* Canvas Track */
+    .canvas-container {
+      width: 800px;
+      height: 100px;
+      position: relative;
+      background-color: #000000;
+    }
+
+    .canvas-container canvas {
+      display: block;
+      width: 800px;
+      height: 100px;
+    }
+
+    /* Grid Overlay for grid alignment */
+    .canvas-grid-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 800px;
+      height: 100px;
+      pointer-events: none;
+      background-image: 
+        linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      background-size: 40px 20px;
+    }
+
+    /* Right Numeric Readout Panel */
+    .numeric-display {
+      flex-grow: 1;
+      width: 186px;
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border-left: 1px solid var(--border-color);
+      background-color: rgba(255, 255, 255, 0.01);
+      position: relative;
+      transition: background-color 0.3s;
+      user-select: none;
+    }
+
+    .numeric-display.alarm-yellow {
+      animation: flash-alarm-yellow 1.2s infinite;
+    }
+
+    .numeric-display.alarm-red {
+      animation: flash-alarm-red 0.8s infinite;
+    }
+
+    @keyframes flash-alarm-yellow {
+      0%, 100% { background-color: rgba(255, 255, 0, 0.01); }
+      50% { background-color: rgba(255, 255, 0, 0.15); }
+    }
+
+    @keyframes flash-alarm-red {
+      0%, 100% { background-color: rgba(255, 0, 0, 0.01); }
+      50% { background-color: rgba(255, 0, 0, 0.25); }
+    }
+
+    .num-header {
+      display: flex;
+      justify-space: space-between;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .num-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      opacity: 0.9;
+    }
+
+    .num-limits {
+      font-family: var(--font-digital);
+      font-size: 0.7rem;
+      opacity: 0.5;
+      text-align: right;
+      line-height: 1.1;
+    }
+
+    .num-body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-grow: 1;
+      height: 40px;
+    }
+
+    .num-value {
+      font-family: var(--font-digital);
+      font-size: 2.8rem;
+      font-weight: 900;
+      line-height: 1;
+      text-shadow: 0 0 8px currentColor;
+    }
+
+    .num-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      font-size: 0.75rem;
+    }
+
+    .num-unit {
+      opacity: 0.7;
+    }
+
+    /* Flashing Heart Icon */
+    .heart-icon {
+      display: inline-block;
+      margin-left: 5px;
+      font-size: 1.2rem;
+      transition: transform 0.05s ease-out, opacity 0.05s ease-out;
+      opacity: 0.3;
+      transform: scale(1);
+    }
+    .heart-icon.active {
+      opacity: 1;
+      transform: scale(1.4);
+      text-shadow: 0 0 10px var(--color-ecg);
+    }
+
+    /* Instructor Controls Panel */
+    .instructor-panel {
+      width: 1100px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 20px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .panel-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: #eee;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid #333;
+      padding-bottom: 10px;
+    }
+
+    .panel-title::before {
+      content: "🔧";
+    }
+
+    /* Presets Row */
+    .presets-container {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+
+    .preset-btn {
+      background-color: #222;
+      border: 1px solid #3c3c3c;
+      color: #ccc;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .preset-btn:hover {
+      background-color: #333;
+      color: #fff;
+      border-color: #555;
+    }
+
+    .preset-btn.active {
+      background-color: rgba(0, 255, 0, 0.1);
+      border-color: var(--color-ecg);
+      color: var(--color-ecg);
+      box-shadow: 0 0 10px rgba(0, 255, 0, 0.15);
+    }
+
+    .preset-btn.danger.active {
+      background-color: rgba(255, 0, 0, 0.1);
+      border-color: var(--color-abp);
+      color: var(--color-abp);
+      box-shadow: 0 0 10px rgba(255, 0, 0, 0.15);
+    }
+
+    /* Arrhythmia Controls Bar */
+    .arrhythmia-bar {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      background: rgba(0,0,0,0.25);
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 12px 18px;
+      margin-bottom: 25px;
+    }
+
+    .arrhythmia-label {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #aaa;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 5px;
+    }
+
+    .option-btn {
+      background-color: #1a1a1a;
+      border: 1px solid #444;
+      color: #888;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .option-btn:hover {
+      border-color: #666;
+      color: #ccc;
+    }
+
+    .option-btn.active {
+      background-color: rgba(255, 0, 255, 0.1);
+      border-color: var(--color-pap);
+      color: var(--color-pap);
+    }
+
+    .trigger-btn {
+      background-color: #1a1a1a;
+      border: 1px solid var(--color-spo2);
+      color: var(--color-spo2);
+      padding: 6px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 700;
+      transition: all 0.2s;
+    }
+
+    .trigger-btn:hover {
+      background-color: rgba(255, 255, 0, 0.1);
+    }
+
+    /* Sliders grid */
+    .sliders-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px 30px;
+    }
+
+    .slider-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #aaa;
+    }
+
+    .slider-value-display {
+      font-family: var(--font-digital);
+      font-size: 1.1rem;
+      color: #fff;
+      background: #151515;
+      padding: 2px 8px;
+      border-radius: 3px;
+      border: 1px solid #333;
+      min-width: 50px;
+      text-align: center;
+    }
+
+    .slider-input {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      background: #252525;
+      border-radius: 3px;
+      outline: none;
+    }
+
+    /* Custom color tracks for slider thumbs */
+    .slider-ecg::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--color-ecg);
+      cursor: pointer;
+      box-shadow: 0 0 8px var(--color-ecg);
+    }
+    .slider-abp::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--color-abp);
+      cursor: pointer;
+      box-shadow: 0 0 8px var(--color-abp);
+    }
+    .slider-co2::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--color-co2);
+      cursor: pointer;
+      box-shadow: 0 0 8px var(--color-co2);
+    }
+    .slider-spo2::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--color-spo2);
+      cursor: pointer;
+      box-shadow: 0 0 8px var(--color-spo2);
+    }
+    .slider-pap::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--color-pap);
+      cursor: pointer;
+      box-shadow: 0 0 8px var(--color-pap);
+    }
+
+    .slider-input::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    .slider-ecg::-moz-range-thumb { background: var(--color-ecg); box-shadow: 0 0 8px var(--color-ecg); }
+    .slider-abp::-moz-range-thumb { background: var(--color-abp); box-shadow: 0 0 8px var(--color-abp); }
+    .slider-co2::-moz-range-thumb { background: var(--color-co2); box-shadow: 0 0 8px var(--color-co2); }
+    .slider-spo2::-moz-range-thumb { background: var(--color-spo2); box-shadow: 0 0 8px var(--color-spo2); }
+    .slider-pap::-moz-range-thumb { background: var(--color-pap); box-shadow: 0 0 8px var(--color-pap); }
+  </style>
+</head>
+<body>
+
+  <!-- Clinical Patient Monitor Bezel Box -->
+  <div class="monitor-bezel">
+    <div class="monitor-screen">
+      
+      <!-- Monitor Header Status Bar -->
+      <div class="monitor-header">
+        <div class="patient-info">
+          <span class="label">PATIENT:</span> <strong>Doe, John</strong>
+          <span class="divider">|</span>
+          <span class="label">ID:</span> <strong>982-411-A</strong>
+          <span class="divider">|</span>
+          <span class="label">BED:</span> <strong>ICU-04</strong>
+          <span class="divider">|</span>
+          <button id="muteBtn" class="mute-btn">🔇 ALARM MUTED</button>
+        </div>
+        <div class="status-panel">
+          <span class="status-indicator normal" id="statusIndicator">● NORMAL</span>
+          <div class="monitor-time" id="monitorTime">--:--:--</div>
+        </div>
+      </div>
+
+      <!-- Waveform Stack -->
+      <div class="waveform-stack">
+        
+        <!-- Track 1: ECG -->
+        <div class="waveform-row row-ecg">
+          <div class="waveform-label">
+            <span class="title">ECG</span>
+            <span class="subtitle">LEAD II</span>
+          </div>
+          <div class="canvas-container">
+            <canvas id="ecgCanvas" width="800" height="100"></canvas>
+            <div class="canvas-grid-overlay"></div>
+          </div>
+          <div class="numeric-display" id="hrBox">
+            <div class="num-header">
+              <span class="num-title">HR</span>
+              <span class="num-limits">120<br>60</span>
+            </div>
+            <div class="num-body">
+              <span class="num-value" id="hrValue">80</span>
+              <span class="heart-icon" id="heartIcon">♥</span>
+            </div>
+            <div class="num-footer">
+              <span class="num-unit">bpm</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Track 2: ABP -->
+        <div class="waveform-row row-abp">
+          <div class="waveform-label">
+            <span class="title">ART</span>
+            <span class="subtitle">ABP</span>
+          </div>
+          <div class="canvas-container">
+            <canvas id="abpCanvas" width="800" height="100"></canvas>
+            <div class="canvas-grid-overlay"></div>
+          </div>
+          <div class="numeric-display" id="bpBox">
+            <div class="num-header">
+              <span class="num-title">ABP</span>
+              <span class="num-limits">140/90<br>90/50</span>
+            </div>
+            <div class="num-body">
+              <span class="num-value" id="bpValue">120/80</span>
+            </div>
+            <div class="num-footer">
+              <span class="num-unit">mmHg</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Track 3: SpO2 -->
+        <div class="waveform-row row-spo2">
+          <div class="waveform-label">
+            <span class="title">PLETH</span>
+            <span class="subtitle">SpO2</span>
+          </div>
+          <div class="canvas-container">
+            <canvas id="spo2Canvas" width="800" height="100"></canvas>
+            <div class="canvas-grid-overlay"></div>
+          </div>
+          <div class="numeric-display" id="spo2Box">
+            <div class="num-header">
+              <span class="num-title">SpO2</span>
+              <span class="num-limits">100<br>90</span>
+            </div>
+            <div class="num-body">
+              <span class="num-value" id="spo2Value">98</span>
+            </div>
+            <div class="num-footer">
+              <span class="num-unit">%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Track 4: PAP -->
+        <div class="waveform-row row-pap">
+          <div class="waveform-label">
+            <span class="title">PA</span>
+            <span class="subtitle">PAP</span>
+          </div>
+          <div class="canvas-container">
+            <canvas id="papCanvas" width="800" height="100"></canvas>
+            <div class="canvas-grid-overlay"></div>
+          </div>
+          <div class="numeric-display" id="papBox">
+            <div class="num-header">
+              <span class="num-title">PAP</span>
+              <span class="num-limits">30/15<br>15/5</span>
+            </div>
+            <div class="num-body">
+              <span class="num-value" id="papValue">25/10</span>
+            </div>
+            <div class="num-footer">
+              <span class="num-unit">mmHg</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Track 5: Capnography CO2 -->
+        <div class="waveform-row row-co2">
+          <div class="waveform-label">
+            <span class="title">CO2</span>
+            <span class="subtitle">CAPNO</span>
+          </div>
+          <div class="canvas-container">
+            <canvas id="co2Canvas" width="800" height="100"></canvas>
+            <div class="canvas-grid-overlay"></div>
+          </div>
+          <div class="numeric-display" id="co2Box">
+            <div class="num-header">
+              <span class="num-title">etCO2</span>
+              <span class="num-limits">45<br>30</span>
+            </div>
+            <div class="num-body">
+              <span class="num-value" id="co2Value">38</span>
+            </div>
+            <div class="num-footer">
+              <span class="num-unit">mmHg</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Instructor Simulator Console Panel -->
+  <div class="instructor-panel">
+    <div class="panel-title">INSTRUCTOR SIMULATOR CONSOLE</div>
+
+    <!-- Quick Presets -->
+    <div class="presets-container">
+      <button class="preset-btn active" id="presetNormal">Normal Sinus Rhythm</button>
+      <button class="preset-btn" id="presetTachy">Tachycardia & Hypertension</button>
+      <button class="preset-btn" id="presetBrady">Bradycardia & Hypotension</button>
+      <button class="preset-btn" id="presetHypoxia">Severe Hypoxia</button>
+      <button class="preset-btn danger" id="presetArrest">Cardiac Arrest (Asystole)</button>
+    </div>
+
+    <!-- Arrhythmia & Noise Settings -->
+    <div class="arrhythmia-bar">
+      <span class="arrhythmia-label">ARRHYTHMIA CONTROLS:</span>
+      <div class="btn-group" id="pvcGroup">
+        <button class="option-btn active" data-mode="none">PVC: None</button>
+        <button class="option-btn" data-mode="occasional">PVC: Occasional (15%)</button>
+        <button class="option-btn" data-mode="bigeminy">PVC: Bigeminy (50%)</button>
+      </div>
+      <button class="trigger-btn" id="triggerPvcNowBtn">⚡ TRIGGER PVC NOW</button>
+      
+      <span class="arrhythmia-label" style="margin-left: 20px;">ECG NOISE (MUSCULAR):</span>
+      <input type="range" min="0" max="100" value="0" class="slider-input slider-ecg" id="noiseSlider" style="width: 150px;">
+      <span class="slider-value-display" id="noiseDisplay" style="font-size: 0.85rem; min-width: 40px;">0%</span>
+    </div>
+
+    <!-- Sliders Grid -->
+    <div class="sliders-grid">
+      
+      <!-- Heart Rate Slider -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span>Heart Rate (HR)</span>
+          <span class="slider-value-display" id="hrValLabel">80 bpm</span>
+        </div>
+        <input type="range" min="0" max="220" value="80" class="slider-input slider-ecg" id="hrSlider">
+      </div>
+
+      <!-- Systolic BP Slider -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span>ABP Systolic Pressure</span>
+          <span class="slider-value-display" id="sysValLabel">120 mmHg</span>
+        </div>
+        <input type="range" min="40" max="240" value="120" class="slider-input slider-abp" id="sysSlider">
+      </div>
+
+      <!-- Diastolic BP Slider -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span>ABP Diastolic Pressure</span>
+          <span class="slider-value-display" id="diaValLabel">80 mmHg</span>
+        </div>
+        <input type="range" min="30" max="150" value="80" class="slider-input slider-abp" id="diaSlider">
+      </div>
+
+      <!-- SpO2 Slider -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span>Oxygen Saturation (SpO2)</span>
+          <span class="slider-value-display" id="spo2ValLabel">98%</span>
+        </div>
+        <input type="range" min="50" max="100" value="98" class="slider-input slider-spo2" id="spo2Slider">
+      </div>
+
+      <!-- PAP Systolic Slider -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span>PAP Systolic Pressure</span>
+          <span class="slider-value-display" id="papSysValLabel">25 mmHg</span>
+        </div>
+        <input type="range" min="5" max="60" value="25" class="slider-input slider-pap" id="papSysSlider">
+      </div>
+
+      <!-- PAP Diastolic Slider -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span>PAP Diastolic Pressure</span>
+          <span class="slider-value-display" id="papDiaValLabel">10 mmHg</span>
+        </div>
+        <input type="range" min="2" max="30" value="10" class="slider-input slider-pap" id="papDiaSlider">
+      </div>
+
+      <!-- Respiratory Rate Slider -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span>Respiratory Rate (RR)</span>
+          <span class="slider-value-display" id="rrValLabel">15 rpm</span>
+        </div>
+        <input type="range" min="0" max="60" value="15" class="slider-input slider-co2" id="rrSlider">
+      </div>
+
+      <!-- etCO2 Slider -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span>End-Tidal CO2 (etCO2)</span>
+          <span class="slider-value-display" id="co2ValLabel">38 mmHg</span>
+        </div>
+        <input type="range" min="0" max="60" value="38" class="slider-input slider-co2" id="co2Slider">
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // --- 1. GLOBAL STATE CONFIGURATION (FULLY EXPOSED CONFIG OBJECT) ---
+    const CONFIG = {
+      heartRate: 80,
+      systolicBP: 120,
+      diastolicBP: 80,
+      respiratoryRate: 15,
+      etCO2: 38,
+      inCO2: 0,
+      papSystolic: 25,
+      papDiastolic: 10,
+      spo2: 98,
+      
+      // Arrhythmias & Artifacts
+      pvcMode: 'none', // 'none', 'occasional', 'bigeminy'
+      muscularNoise: 0, // noise intensity (0 to 100)
+      triggerPVC: false
+    };
+
+    // Phase timers for stretching & squeezing
+    let cardiacPhase = 0;
+    let respiratoryPhase = 0;
+    
+    // Waveform compliance buffer variables (to avoid 90deg drops and model refills)
+    let runningArtPressure = CONFIG.diastolicBP;
+    let runningPapPressure = CONFIG.papDiastolic;
+    let runningPlethVal = 0;
+    let runningCO2Val = 0;
+    
+    let cardiacOutputScale = 1.0; // Refilling compliance scale [0, 1]
+    let co2Suppression = 1.0;     // Suppress CO2 if perfusion drops [0, 1]
+    
+    // Arrhythmia state machine
+    let isCurrentBeatPVC = false;
+    let lastBeatWasPVC = false;
+    let nextBeatIsPVC = false;
+    let currentPulseScale = 1.0;
+
+    // Audio variables
+    let audioCtx = null;
+    let isMuted = true;
+    let alarmActive = false;
+
+    // --- 2. CANVASES OVERRIDE FOR CRT GLOW/BLOOM ---
+    // Intercept Canvas context .stroke() to apply glowing properties on-the-fly.
+    function isWaveformColor(style) {
+      if (typeof style !== 'string') return false;
+      const s = style.toLowerCase().replace(/\s+/g, '');
+      return (
+        s.includes('#00ff00') || s.includes('rgb(0,255,0)') || s.includes('rgba(0,255,0') || // ECG
+        s.includes('#ff0000') || s.includes('rgb(255,0,0)') || s.includes('rgba(255,0,0') || // ABP
+        s.includes('#ffffff') || s.includes('rgb(255,255,255)') || s.includes('rgba(255,255,255') || // CO2
+        s.includes('#ffff00') || s.includes('rgb(255,255,0)') || s.includes('rgba(255,255,0') || // SpO2
+        s.includes('#ff00ff') || s.includes('rgb(255,0,255)') || s.includes('rgba(255,0,255')    // PAP
+      );
+    }
+
+    const canvases = document.querySelectorAll('canvas');
+    canvases.forEach(canvas => {
+      const ctx = canvas.getContext('2d');
+      const originalStroke = ctx.stroke;
+      ctx.stroke = function() {
+        if (isWaveformColor(this.strokeStyle)) {
+          this.shadowBlur = 4;
+          this.shadowColor = this.strokeStyle;
+        } else {
+          this.shadowBlur = 0;
+        }
+        originalStroke.apply(this, arguments);
+      };
+    });
+
+    // --- 3. INITIALIZE SMOOTHIE CHARTS ---
+    const smoothieConfigBase = {
+      grid: {
+        strokeStyle: 'rgba(255, 255, 255, 0.05)',
+        fillStyle: '#000000',
+        lineWidth: 1,
+        millisPerLine: 1000,
+        verticalSections: 5,
+        borderVisible: false
+      },
+      interpolation: 'bezier',
+      labels: { disabled: true },
+      tooltip: false,
+      nonRealtimeData: false,
+      maxDataSetLength: 250
+    };
+
+    // Establish specific range windows for appropriate amplitudes
+    const ecgChart = new SmoothieChart({ ...smoothieConfigBase, minValue: -0.4, maxValue: 1.2 });
+    const abpChart = new SmoothieChart({ ...smoothieConfigBase, minValue: 0, maxValue: 180 });
+    const spo2Chart = new SmoothieChart({ ...smoothieConfigBase, minValue: -0.1, maxValue: 1.1 });
+    // PAWP Wedge boundary: render faint horizontal guideline at value 12
+    const papChart = new SmoothieChart({ 
+      ...smoothieConfigBase, 
+      minValue: 0, 
+      maxValue: 40,
+      horizontalLines: [{ value: 12, color: 'rgba(255, 0, 255, 0.15)', lineWidth: 1 }]
+    });
+    const co2Chart = new SmoothieChart({ ...smoothieConfigBase, minValue: 0, maxValue: 60 });
+
+    // Stream charts to their canvas contexts
+    ecgChart.streamTo(document.getElementById('ecgCanvas'), 800);
+    abpChart.streamTo(document.getElementById('abpCanvas'), 800);
+    spo2Chart.streamTo(document.getElementById('spo2Canvas'), 800);
+    papChart.streamTo(document.getElementById('papCanvas'), 800);
+    co2Chart.streamTo(document.getElementById('co2Canvas'), 800);
+
+    // Set up real-time time series
+    const ecgSeries = new TimeSeries();
+    const abpSeries = new TimeSeries();
+    const spo2Series = new TimeSeries();
+    const papSeries = new TimeSeries();
+    const co2Series = new TimeSeries();
+
+    ecgChart.addTimeSeries(ecgSeries, { strokeStyle: '#00ff00', lineWidth: 2 });
+    abpChart.addTimeSeries(abpSeries, { strokeStyle: '#ff0000', lineWidth: 2.2 });
+    spo2Chart.addTimeSeries(spo2Series, { strokeStyle: '#ffff00', lineWidth: 2.2 });
+    papChart.addTimeSeries(papSeries, { strokeStyle: '#ff00ff', lineWidth: 2 });
+    co2Chart.addTimeSeries(co2Series, { strokeStyle: '#ffffff', lineWidth: 2 });
+
+
+    // --- 4. BIOLOGICALLY CORRECT MATHEMATICAL MODELS ---
+
+    // A. Gaussian ECG Model
+    function getECGValue(phase, isPVC) {
+      // Map phase [0, 1] to theta [-PI, PI]
+      let theta = phase * 2 * Math.PI - Math.PI;
+      let sum = 0;
+      
+      const normalParams = [
+        { a: 0.12,  theta: -1.1, b: 0.25 }, // P-Wave
+        { a: -0.20, theta: -0.3, b: 0.05 }, // Q-Wave
+        { a: 1.20,  theta: 0.0,  b: 0.05 }, // R-Wave
+        { a: -0.35, theta: 0.1,  b: 0.06 }, // S-Wave
+        { a: 0.35,  theta: 1.2,  b: 0.40 }  // T-Wave
+      ];
+      
+      const pvcParams = [
+        { a: -1.40, theta: -0.1, b: 0.15 }, // Wide inverted QRS
+        { a: 0.80,  theta: 0.25, b: 0.18 }, // Wide rebound
+        { a: -0.40, theta: 0.9,  b: 0.30 }  // Inverted T-wave
+      ];
+      
+      const params = isPVC ? pvcParams : normalParams;
+      
+      params.forEach(p => {
+        let dTheta = theta - p.theta;
+        // Normalize dTheta to [-PI, PI] to handle wrap-around correctly
+        while (dTheta < -Math.PI) dTheta += 2 * Math.PI;
+        while (dTheta > Math.PI) dTheta -= 2 * Math.PI;
+        
+        sum += p.a * Math.exp(-Math.pow(dTheta, 2) / (2 * Math.pow(p.b, 2)));
+      });
+      
+      // Blend muscular noise artifact directly over the ECG signal
+      if (CONFIG.muscularNoise > 0) {
+        const noise = (Math.random() - 0.5) * (CONFIG.muscularNoise / 100) * 0.35;
+        sum += noise;
+      }
+      
+      return sum;
+    }
+
+    // B. Piecewise Windkessel ABP (ART) model
+    function getABPShape(u) {
+      let f = 0;
+      if (u < 0.15) {
+        // Systolic Climb (rapid rise)
+        f = Math.sin((Math.PI / 2) * (u / 0.15));
+      } else if (u < 0.30) {
+        // Systolic early fall
+        const fall = (u - 0.15) / 0.15;
+        f = 1.0 - 0.28 * Math.sin((Math.PI / 2) * fall);
+      } else if (u < 0.34) {
+        // Dicrotic Notch valve closure dip
+        const notch = (u - 0.30) / 0.04;
+        f = 0.72 - 0.17 * Math.sin((Math.PI / 2) * notch);
+      } else if (u < 0.42) {
+        // Dicrotic rebound wave
+        const rebound = (u - 0.34) / 0.08;
+        f = 0.55 + 0.07 * Math.sin((Math.PI / 2) * rebound);
+      } else {
+        // Diastolic Windkessel exponential decay RC curve, normalized to hit 0 at u = 1.0
+        const decayTime = u - 0.42;
+        const RC = 0.35;
+        const fNotch = 0.62;
+        const expVal = Math.exp(-decayTime / RC);
+        const expMin = Math.exp(-0.58 / RC);
+        f = fNotch * (expVal - expMin) / (1.0 - expMin);
+      }
+      return f;
+    }
+
+    // C. Piecewise Windkessel PAP model (softer notch, compressed metrics)
+    function getPAPShape(u) {
+      let f = 0;
+      if (u < 0.15) {
+        f = Math.sin((Math.PI / 2) * (u / 0.15));
+      } else if (u < 0.30) {
+        const fall = (u - 0.15) / 0.15;
+        f = 1.0 - 0.30 * Math.sin((Math.PI / 2) * fall);
+      } else if (u < 0.34) {
+        // Softer notch drop
+        const notch = (u - 0.30) / 0.04;
+        f = 0.70 - 0.08 * Math.sin((Math.PI / 2) * notch);
+      } else if (u < 0.40) {
+        // Softer rebound
+        const rebound = (u - 0.34) / 0.06;
+        f = 0.62 + 0.03 * Math.sin((Math.PI / 2) * rebound);
+      } else {
+        // Exponential decay
+        const decayTime = u - 0.40;
+        const RC = 0.45;
+        const fNotch = 0.65;
+        const expVal = Math.exp(-decayTime / RC);
+        const expMin = Math.exp(-0.60 / RC);
+        f = fNotch * (expVal - expMin) / (1.0 - expMin);
+      }
+      return f;
+    }
+
+    // D. 2-Component Gaussian PLETH Model
+    function getPlethShape(t) {
+      const A1 = 1.0, t1 = 0.2, g1 = 0.08;
+      const A2 = 0.35, t2 = 0.45, g2 = 0.15;
+      
+      // Since t is periodic on [0, 1], get the shortest distance to target
+      function getPeriodicDiff(val, target) {
+        let diff = val - target;
+        while (diff < -0.5) diff += 1.0;
+        while (diff > 0.5) diff -= 1.0;
+        return diff;
+      }
+      
+      const dt1 = getPeriodicDiff(t, t1);
+      const dt2 = getPeriodicDiff(t, t2);
+      
+      const comp1 = A1 * Math.exp(-Math.pow(dt1, 2) / (2 * Math.pow(g1, 2)));
+      const comp2 = A2 * Math.exp(-Math.pow(dt2, 2) / (2 * Math.pow(g2, 2)));
+      return comp1 + comp2;
+    }
+
+    // E. CO2 Box-wave with Smoothstep Corners
+    function getCO2Shape(v) {
+      const inhaleDur = 0.60;
+      if (v < inhaleDur) return 0;
+      
+      const u = (v - inhaleDur) / (1.0 - inhaleDur);
+      
+      function smoothstep(x) {
+        return x * x * (3 - 2 * x);
+      }
+      
+      if (u < 0.12) {
+        // Phase II expiratory rise
+        return smoothstep(u / 0.12);
+      } else if (u < 0.88) {
+        // Phase III alveolar plateau with slight upward tilt
+        const plateau = (u - 0.12) / 0.76;
+        return 1.0 + 0.05 * plateau;
+      } else {
+        // Phase IV inspiratory drop
+        return 1.05 * smoothstep((1.0 - u) / 0.12);
+      }
+    }
+
+
+    // --- 5. AUDIO SYNTHESIS SYSTEM (WEB AUDIO API) ---
+
+    function playBeep(pitchSpO2) {
+      if (isMuted) return;
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        osc.type = 'sine';
+        
+        // Pitch mapping based on SpO2
+        const baseFreq = 350;
+        const mappedFreq = baseFreq + (pitchSpO2 - 50) * 8;
+        osc.frequency.setValueAtTime(mappedFreq, audioCtx.currentTime);
+        
+        gainNode.gain.setValueAtTime(0.06, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+        
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.15);
+      } catch (err) {
+        console.error("Audio error: ", err);
+      }
+    }
+
+    function playAlarmTone() {
+      if (isMuted || !alarmActive) return;
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        
+        const osc1 = audioCtx.createOscillator();
+        const osc2 = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        osc1.type = 'sine';
+        osc2.type = 'sine';
+        
+        osc1.frequency.setValueAtTime(980, audioCtx.currentTime);
+        osc2.frequency.setValueAtTime(1020, audioCtx.currentTime);
+        
+        gainNode.gain.setValueAtTime(0.03, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.03, audioCtx.currentTime + 0.15);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.28);
+        
+        osc1.connect(gainNode);
+        osc2.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        osc1.start();
+        osc2.start();
+        osc1.stop(audioCtx.currentTime + 0.3);
+        osc2.stop(audioCtx.currentTime + 0.3);
+      } catch (err) {
+        console.error("Alarm audio error: ", err);
+      }
+    }
+
+    setInterval(() => {
+      if (alarmActive) {
+        playAlarmTone();
+      }
+    }, 1500);
+
+
+    // --- 6. REAL-TIME ENGINE LOOP (25Hz / 40ms) ---
+    const dt = 0.040;
+
+    setInterval(() => {
+      const now = new Date().getTime();
+      
+      // A. Chamber refill (hemodynamic recovery) & arrest decay scales
+      if (CONFIG.heartRate > 0) {
+        // Continuous slow increase of chamber blood volume (recovering cardiac output)
+        cardiacOutputScale = Math.min(1.0, cardiacOutputScale + dt * 0.3);
+      } else {
+        // Exponential decay of hemodynamics volume scale
+        cardiacOutputScale = Math.max(0.0, cardiacOutputScale - dt * 0.4);
+      }
+
+      // B. ECG PVC trigger check & Phase Progression
+      if (CONFIG.heartRate > 0) {
+        let triggerEarlyBeat = false;
+        
+        // PVC arrhythmic timing overrides
+        if (CONFIG.pvcMode === 'bigeminy' && !isCurrentBeatPVC && cardiacPhase >= 0.58) {
+          triggerEarlyBeat = true;
+        } else if (CONFIG.pvcMode === 'occasional' && !isCurrentBeatPVC && cardiacPhase >= 0.65 && Math.random() < 0.03) {
+          triggerEarlyBeat = true;
+        } else if (CONFIG.triggerPVC && cardiacPhase >= 0.35) {
+          triggerEarlyBeat = true;
+          CONFIG.triggerPVC = false;
+        }
+        
+        cardiacPhase += dt * (CONFIG.heartRate / 60);
+        
+        if (cardiacPhase >= 1.0 || triggerEarlyBeat) {
+          cardiacPhase = 0;
+          triggerHeartBeat(triggerEarlyBeat);
+        }
+      } else {
+        cardiacPhase = 0;
+      }
+      
+      // C. Respiratory Phase Progression
+      if (CONFIG.respiratoryRate > 0) {
+        respiratoryPhase += dt * (CONFIG.respiratoryRate / 60);
+        if (respiratoryPhase >= 1.0) {
+          respiratoryPhase -= 1.0;
+        }
+      } else {
+        respiratoryPhase = 0;
+      }
+
+      // D. Generate Target Waveform Points
+      let targetECG = 0;
+      let targetArt = CONFIG.diastolicBP;
+      let targetPap = CONFIG.papDiastolic;
+      let targetPleth = 0;
+      let targetCO2 = CONFIG.inCO2;
+      
+      if (CONFIG.heartRate > 0) {
+        // 1. ECG
+        targetECG = getECGValue(cardiacPhase, isCurrentBeatPVC);
+        
+        // 150ms delay in phase units: 0.15 * (HR / 60)
+        const delayPhase = 0.15 * (CONFIG.heartRate / 60);
+        // Hemodynamic phase starts climbing 150ms after the ECG R-peak (which is at cardiacPhase = 0.5)
+        const hemoPhase = (cardiacPhase - 0.5 - delayPhase + 1.0) % 1.0;
+
+        // 2. ABP
+        const abpShape = getABPShape(hemoPhase);
+        const artPulse = (CONFIG.systolicBP - CONFIG.diastolicBP) * cardiacOutputScale * currentPulseScale;
+        targetArt = CONFIG.diastolicBP * cardiacOutputScale + artPulse * abpShape;
+        
+        // 3. SpO2/Pleth
+        const plethShape = getPlethShape(hemoPhase);
+        targetPleth = plethShape * cardiacOutputScale * currentPulseScale;
+        
+        // 4. PAP
+        const papShape = getPAPShape(hemoPhase);
+        const papPulse = (CONFIG.papSystolic - CONFIG.papDiastolic) * cardiacOutputScale * currentPulseScale;
+        targetPap = CONFIG.papDiastolic * cardiacOutputScale + papPulse * papShape;
+      } else {
+        // Cardiac Arrest static mean pressure goals
+        targetECG = 0;
+        targetArt = 8.0;  // Mean arterial filling pressure (compliance floor)
+        targetPap = 4.0;  // Mean pulmonary compliance floor
+        targetPleth = 0;
+      }
+
+      // 5. Capnography cross-talk suppression
+      // If blood circulation is failing (systolicBP * output scale < 40 mmHg), suppress CO2 plateau to zero
+      const currentSystolic = CONFIG.heartRate > 0 ? (CONFIG.systolicBP * cardiacOutputScale) : runningArtPressure;
+      if (currentSystolic < 40) {
+        co2Suppression = Math.max(0.0, co2Suppression - dt * 0.5); // 2s decay
+      } else {
+        co2Suppression = Math.min(1.0, co2Suppression + dt * 0.5); // 2s recovery
+      }
+      
+      if (CONFIG.respiratoryRate > 0) {
+        const co2Shape = getCO2Shape(respiratoryPhase);
+        targetCO2 = CONFIG.inCO2 + (CONFIG.etCO2 - CONFIG.inCO2) * co2Shape * co2Suppression;
+      } else {
+        targetCO2 = CONFIG.inCO2;
+      }
+
+      // E. Continuous compliance integration filters (smooths out all abrupt jumps)
+      const hemodynamicSmoothing = CONFIG.heartRate > 0 ? 0.30 : 0.05; // slower decay curve on arrest
+      runningArtPressure += (targetArt - runningArtPressure) * hemodynamicSmoothing;
+      runningPapPressure += (targetPap - runningPapPressure) * hemodynamicSmoothing;
+      runningPlethVal += (targetPleth - runningPlethVal) * hemodynamicSmoothing;
+      
+      runningCO2Val += (targetCO2 - runningCO2Val) * 0.40;
+
+      // F. Append points to charts
+      ecgSeries.append(now, targetECG);
+      abpSeries.append(now, runningArtPressure);
+      spo2Series.append(now, runningPlethVal);
+      papSeries.append(now, runningPapPressure);
+      co2Series.append(now, runningCO2Val);
+      
+      // G. Update monitor dashboard readouts
+      updateNumericDisplays();
+      
+    }, 40);
+
+    // Beat triggers
+    function triggerHeartBeat(forcedEarly) {
+      lastBeatWasPVC = isCurrentBeatPVC;
+      isCurrentBeatPVC = forcedEarly || nextBeatIsPVC;
+      
+      // Queue next PVCbeat states
+      if (CONFIG.pvcMode === 'bigeminy') {
+        nextBeatIsPVC = !isCurrentBeatPVC;
+      } else if (CONFIG.pvcMode === 'occasional') {
+        nextBeatIsPVC = Math.random() < 0.15;
+      } else {
+        nextBeatIsPVC = false;
+      }
+
+      // Chamber filling scale adjustments: Contraction refills Windkessel
+      if (CONFIG.heartRate > 0) {
+        cardiacOutputScale = Math.min(1.0, cardiacOutputScale + 0.35); // takes 2-3 beats to build up
+      }
+      
+      // Adjust pulse amplitude values based on PVC conditions (preload failure)
+      if (isCurrentBeatPVC) {
+        currentPulseScale = 0.35; // Premature beat results in low stroke volume
+      } else if (lastBeatWasPVC) {
+        currentPulseScale = 1.25; // Compensatory pause allows extra filling -> hyper-pulse
+      } else {
+        currentPulseScale = 1.0;
+      }
+
+      // Visual blink
+      const heart = document.getElementById('heartIcon');
+      if (heart) {
+        heart.classList.add('active');
+        setTimeout(() => {
+          heart.classList.remove('active');
+        }, 150);
+      }
+      
+      // Synchronized beat beep
+      playBeep(CONFIG.spo2);
+    }
+
+
+    // --- 7. PANEL VALUE UPDATES & ALARM LOGIC ---
+    function updateNumericDisplays() {
+      // Heart Rate Box
+      const hrBox = document.getElementById('hrBox');
+      const hrVal = document.getElementById('hrValue');
+      if (CONFIG.heartRate === 0) {
+        hrVal.textContent = '0';
+        hrBox.className = 'numeric-display alarm-red';
+      } else {
+        hrVal.textContent = Math.round(CONFIG.heartRate);
+        if (CONFIG.heartRate < 50 || CONFIG.heartRate > 120) {
+          hrBox.className = 'numeric-display alarm-red';
+        } else if (CONFIG.heartRate < 60 || CONFIG.heartRate > 100) {
+          hrBox.className = 'numeric-display alarm-yellow';
+        } else {
+          hrBox.className = 'numeric-display';
+        }
+      }
+
+      // Blood Pressure Box (ABP)
+      const bpBox = document.getElementById('bpBox');
+      const bpVal = document.getElementById('bpValue');
+      if (CONFIG.heartRate === 0 || runningArtPressure < 15) {
+        bpVal.textContent = '---/---';
+        bpBox.className = 'numeric-display alarm-red';
+      } else {
+        // Calculate running systolic and diastolic from running integrated pressures
+        // To display real values in the panel:
+        const dispSys = Math.round(CONFIG.systolicBP * cardiacOutputScale * (isCurrentBeatPVC ? 0.35 : (lastBeatWasPVC ? 1.25 : 1.0)));
+        const dispDia = Math.round(CONFIG.diastolicBP * cardiacOutputScale);
+        bpVal.textContent = `${dispSys}/${dispDia}`;
+        if (dispSys > 140 || dispSys < 90 || dispDia > 90 || dispDia < 50) {
+          bpBox.className = 'numeric-display alarm-yellow';
+        } else {
+          bpBox.className = 'numeric-display';
+        }
+      }
+
+      // SpO2 Box
+      const spo2Box = document.getElementById('spo2Box');
+      const spo2Val = document.getElementById('spo2Value');
+      if (CONFIG.heartRate === 0 || runningPlethVal < 0.05) {
+        spo2Val.textContent = '---';
+        spo2Box.className = 'numeric-display alarm-red';
+      } else {
+        spo2Val.textContent = Math.round(CONFIG.spo2);
+        if (CONFIG.spo2 < 90) {
+          spo2Box.className = 'numeric-display alarm-red';
+        } else if (CONFIG.spo2 < 95) {
+          spo2Box.className = 'numeric-display alarm-yellow';
+        } else {
+          spo2Box.className = 'numeric-display';
+        }
+      }
+
+      // PAP Box
+      const papBox = document.getElementById('papBox');
+      const papVal = document.getElementById('papValue');
+      if (CONFIG.heartRate === 0 || runningPapPressure < 7) {
+        papVal.textContent = '---/---';
+        papBox.className = 'numeric-display alarm-red';
+      } else {
+        const dispSys = Math.round(CONFIG.papSystolic * cardiacOutputScale * (isCurrentBeatPVC ? 0.35 : (lastBeatWasPVC ? 1.25 : 1.0)));
+        const dispDia = Math.round(CONFIG.papDiastolic * cardiacOutputScale);
+        papVal.textContent = `${dispSys}/${dispDia}`;
+        if (dispSys > 30 || dispSys < 15 || dispDia > 15 || dispDia < 5) {
+          papBox.className = 'numeric-display alarm-yellow';
+        } else {
+          papBox.className = 'numeric-display';
+        }
+      }
+
+      // CO2 Box
+      const co2Box = document.getElementById('co2Box');
+      const co2Val = document.getElementById('co2Value');
+      if (CONFIG.respiratoryRate === 0) {
+        co2Val.textContent = '0';
+        co2Box.className = 'numeric-display alarm-red';
+      } else {
+        // etCO2 decays if circulation is suppressed
+        const dispCO2 = Math.round(CONFIG.etCO2 * co2Suppression);
+        co2Val.textContent = dispCO2;
+        if (dispCO2 < 30 || dispCO2 > 45) {
+          co2Box.className = 'numeric-display alarm-yellow';
+        } else {
+          co2Box.className = 'numeric-display';
+        }
+      }
+
+      // Master alarm determination
+      const isArrest = (CONFIG.heartRate === 0);
+      const isRedAlert = (CONFIG.heartRate < 50 || CONFIG.heartRate > 120 || CONFIG.spo2 < 90 || CONFIG.respiratoryRate === 0);
+      const isYellowAlert = (CONFIG.heartRate < 60 || CONFIG.heartRate > 100 || CONFIG.spo2 < 95 || CONFIG.systolicBP > 140 || CONFIG.systolicBP < 90 || CONFIG.etCO2 < 30 || CONFIG.etCO2 > 45);
+      
+      const indicator = document.getElementById('statusIndicator');
+      if (isArrest) {
+        indicator.textContent = '● CRITICAL ASYSTOLE';
+        indicator.className = 'status-indicator danger';
+        alarmActive = true;
+      } else if (isRedAlert) {
+        indicator.textContent = '● RED ALARM ACTIVE';
+        indicator.className = 'status-indicator danger';
+        alarmActive = true;
+      } else if (isYellowAlert) {
+        indicator.textContent = '● YELLOW ALARM ACTIVE';
+        indicator.className = 'status-indicator warning';
+        alarmActive = true;
+      } else {
+        indicator.textContent = '● NORMAL';
+        indicator.className = 'status-indicator normal';
+        alarmActive = false;
+      }
+    }
+
+
+    // --- 8. INSTRUCTOR SLIDER CONTROLS SETUP ---
+    const controls = [
+      { id: 'hrSlider', labelId: 'hrValLabel', suffix: ' bpm', update: (val) => { CONFIG.heartRate = parseInt(val); } },
+      { id: 'sysSlider', labelId: 'sysValLabel', suffix: ' mmHg', update: (val) => { CONFIG.systolicBP = parseInt(val); checkBPLimits(); } },
+      { id: 'diaSlider', labelId: 'diaValLabel', suffix: ' mmHg', update: (val) => { CONFIG.diastolicBP = parseInt(val); checkBPLimits(); } },
+      { id: 'spo2Slider', labelId: 'spo2ValLabel', suffix: '%', update: (val) => { CONFIG.spo2 = parseInt(val); } },
+      { id: 'papSysSlider', labelId: 'papSysValLabel', suffix: ' mmHg', update: (val) => { CONFIG.papSystolic = parseInt(val); checkPAPLimits(); } },
+      { id: 'papDiaSlider', labelId: 'papDiaValLabel', suffix: ' mmHg', update: (val) => { CONFIG.papDiastolic = parseInt(val); checkPAPLimits(); } },
+      { id: 'rrSlider', labelId: 'rrValLabel', suffix: ' rpm', update: (val) => { CONFIG.respiratoryRate = parseInt(val); } },
+      { id: 'co2Slider', labelId: 'co2ValLabel', suffix: ' mmHg', update: (val) => { CONFIG.etCO2 = parseInt(val); } }
+    ];
+
+    function checkBPLimits() {
+      const sysSlider = document.getElementById('sysSlider');
+      const diaSlider = document.getElementById('diaSlider');
+      if (CONFIG.diastolicBP >= CONFIG.systolicBP) {
+        CONFIG.diastolicBP = Math.max(30, CONFIG.systolicBP - 10);
+        diaSlider.value = CONFIG.diastolicBP;
+        document.getElementById('diaValLabel').textContent = CONFIG.diastolicBP + ' mmHg';
+      }
+    }
+
+    function checkPAPLimits() {
+      const papSysSlider = document.getElementById('papSysSlider');
+      const papDiaSlider = document.getElementById('papDiaSlider');
+      if (CONFIG.papDiastolic >= CONFIG.papSystolic) {
+        CONFIG.papDiastolic = Math.max(2, CONFIG.papSystolic - 5);
+        papDiaSlider.value = CONFIG.papDiastolic;
+        document.getElementById('papDiaValLabel').textContent = CONFIG.papDiastolic + ' mmHg';
+      }
+    }
+
+    controls.forEach(control => {
+      const slider = document.getElementById(control.id);
+      const label = document.getElementById(control.labelId);
+      
+      slider.addEventListener('input', (e) => {
+        const val = e.target.value;
+        label.textContent = val + control.suffix;
+        control.update(val);
+        clearPresetButtons();
+      });
+    });
+
+    // --- 9. NOISE & ARRHYTHMIA EVENT CONTROLS ---
+    const noiseSlider = document.getElementById('noiseSlider');
+    const noiseDisplay = document.getElementById('noiseDisplay');
+    noiseSlider.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value);
+      CONFIG.muscularNoise = val;
+      noiseDisplay.textContent = val + '%';
+    });
+
+    const pvcButtons = document.querySelectorAll('#pvcGroup .option-btn');
+    pvcButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        pvcButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        CONFIG.pvcMode = btn.getAttribute('data-mode');
+      });
+    });
+
+    const triggerPvcNowBtn = document.getElementById('triggerPvcNowBtn');
+    triggerPvcNowBtn.addEventListener('click', () => {
+      CONFIG.triggerPVC = true;
+    });
+
+
+    // --- 10. PRESETS MANAGEMENT ---
+    const presets = {
+      normal: { hr: 80, sys: 120, dia: 80, rr: 15, co2: 38, papSys: 25, papDia: 10, spo2: 98 },
+      tachy: { hr: 135, sys: 175, dia: 105, rr: 24, co2: 42, papSys: 34, papDia: 14, spo2: 96 },
+      brady: { hr: 45, sys: 90, dia: 50, rr: 10, co2: 30, papSys: 16, papDia: 7, spo2: 94 },
+      hypoxia: { hr: 110, sys: 105, dia: 65, rr: 32, co2: 28, papSys: 28, papDia: 12, spo2: 84 },
+      arrest: { hr: 0, sys: 0, dia: 0, rr: 0, co2: 0, papSys: 0, papDia: 0, spo2: 0 }
+    };
+
+    function applyPreset(key) {
+      const preset = presets[key];
+      if (!preset) return;
+      
+      CONFIG.heartRate = preset.hr;
+      CONFIG.systolicBP = preset.sys;
+      CONFIG.diastolicBP = preset.dia;
+      CONFIG.respiratoryRate = preset.rr;
+      CONFIG.etCO2 = preset.co2;
+      CONFIG.papSystolic = preset.papSys;
+      CONFIG.papDiastolic = preset.papDia;
+      CONFIG.spo2 = preset.spo2;
+      
+      // Update UI Sliders
+      document.getElementById('hrSlider').value = CONFIG.heartRate;
+      document.getElementById('sysSlider').value = CONFIG.systolicBP;
+      document.getElementById('diaSlider').value = CONFIG.diastolicBP;
+      document.getElementById('rrSlider').value = CONFIG.respiratoryRate;
+      document.getElementById('co2Slider').value = CONFIG.etCO2;
+      document.getElementById('papSysSlider').value = CONFIG.papSystolic;
+      document.getElementById('papDiaSlider').value = CONFIG.papDiastolic;
+      document.getElementById('spo2Slider').value = CONFIG.spo2;
+
+      // Update Slider Labels
+      document.getElementById('hrValLabel').textContent = CONFIG.heartRate + ' bpm';
+      document.getElementById('sysValLabel').textContent = CONFIG.systolicBP + ' mmHg';
+      document.getElementById('diaValLabel').textContent = CONFIG.diastolicBP + ' mmHg';
+      document.getElementById('rrValLabel').textContent = CONFIG.respiratoryRate + ' rpm';
+      document.getElementById('co2ValLabel').textContent = CONFIG.etCO2 + ' mmHg';
+      document.getElementById('papSysValLabel').textContent = CONFIG.papSystolic + ' mmHg';
+      document.getElementById('papDiaValLabel').textContent = CONFIG.papDiastolic + ' mmHg';
+      document.getElementById('spo2ValLabel').textContent = CONFIG.spo2 + '%';
+    }
+
+    const presetButtons = {
+      normal: document.getElementById('presetNormal'),
+      tachy: document.getElementById('presetTachy'),
+      brady: document.getElementById('presetBrady'),
+      hypoxia: document.getElementById('presetHypoxia'),
+      arrest: document.getElementById('presetArrest')
+    };
+
+    function clearPresetButtons() {
+      Object.values(presetButtons).forEach(btn => btn.classList.remove('active'));
+    }
+
+    Object.keys(presetButtons).forEach(key => {
+      presetButtons[key].addEventListener('click', () => {
+        clearPresetButtons();
+        presetButtons[key].classList.add('active');
+        applyPreset(key);
+      });
+    });
+
+
+    // --- 11. SYSTEM CLOCK & AUDIO TOGGLE ---
+    function updateClock() {
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      document.getElementById('monitorTime').textContent = `${h}:${m}:${s}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    const muteBtn = document.getElementById('muteBtn');
+    muteBtn.addEventListener('click', () => {
+      isMuted = !isMuted;
+      if (isMuted) {
+        muteBtn.textContent = '🔇 ALARM MUTED';
+        muteBtn.classList.remove('active');
+      } else {
+        muteBtn.textContent = '🔊 AUDIO ACTIVE';
+        muteBtn.classList.add('active');
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+      }
+    });
+
+  </script>
+</body>
+</html>

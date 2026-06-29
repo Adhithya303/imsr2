@@ -64,6 +64,8 @@ const useMonitorStore = create((set, get) => ({
     const { _id, session_id, ...clean } = state;
     set(clean);
   },
+  // Optimistic local update — called immediately when instructor changes a param
+  updateParam: (field, value) => set({ [field]: value }),
   appendEvent: (entry) =>
     set((s) => ({ eventLog: [...s.eventLog, entry] })),
   setSessionEnded: () => set({ sessionEnded: true }),

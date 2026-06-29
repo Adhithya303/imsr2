@@ -1,4 +1,4 @@
-import { useState } from "react";
+IMSimport { useState } from "react";
 import socket from "../../socket";
 import useMonitorStore from "../../store/monitorStore";
 
@@ -14,9 +14,16 @@ export default function SetPulmonaryBP({ isOpen, onClose, sessionCode }) {
   if (!isOpen) return null;
 
   const handleOk = () => {
-    socket.emit("update_parameter", { session_code: sessionCode, field: "PAP_sys", value: sysTo, transfer_time: transferTime });
-    socket.emit("update_parameter", { session_code: sessionCode, field: "PAP_dia", value: diaTo, transfer_time: transferTime });
-    socket.emit("update_parameter", { session_code: sessionCode, field: "PAP_wedge", value: wedgeTo, transfer_time: transferTime });
+    const store = useMonitorStore.getState();
+    // Optimistic local update only for instant changes
+    if (transferTime === 0) {
+      store.updateParam("PAP_sys", sysTo);
+      store.updateParam("PAP_dia", diaTo);
+      store.updateParam("PAP_wedge", wedgeTo);
+    }
+    socket.emit("update_parameter", { field: "PAP_sys", value: sysTo, transfer_time_seconds: transferTime, transfer_function: "linear" });
+    socket.emit("update_parameter", { field: "PAP_dia", value: diaTo, transfer_time_seconds: transferTime, transfer_function: "linear" });
+    socket.emit("update_parameter", { field: "PAP_wedge", value: wedgeTo, transfer_time_seconds: transferTime, transfer_function: "linear" });
     onClose();
   };
 
@@ -46,7 +53,7 @@ export default function SetPulmonaryBP({ isOpen, onClose, sessionCode }) {
           <div className="dialog-row">
             <span className="dialog-label">Transfer time:</span>
             <select value={transferTime} onChange={(e) => setTransferTime(Number(e.target.value))} className="dialog-select">
-              <option value={0}>0 min</option><option value={1}>1 min</option><option value={2}>2 min</option><option value={5}>5 min</option>
+              <option value={0}>0 min (instant)</option><option value={60}>1 min</option><option value={120}>2 min</option><option value={300}>5 min</option>
             </select>
           </div>
         </div>
