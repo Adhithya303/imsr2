@@ -54,7 +54,7 @@ export default function ECGTrack({ lead, width = 900, height = 220, paperSpeed =
     const pxPerSample = (paperSpeed * GRID_MM_PX) / SAMPLE_RATE;
     const mVperPx     = 1.0 / (gain * GRID_MM_PX);
     const baseline    = height / 2;
-    const bufSize     = bufferRef[lead]?.length || 0;
+    const bufSize     = bufferRef[lead].length;
 
     // ── Draw static background grid ──────────────────────────────────────────
     bgCtx.fillStyle = "#070b0f";
@@ -94,18 +94,16 @@ export default function ECGTrack({ lead, width = 900, height = 220, paperSpeed =
       const writeHead = state.bufferHead;
       const buf       = state.buffer[lead];
 
-      if (!buf || bufSize === 0) {
+      if (!buf) {
         rafRef.current = requestAnimationFrame(frame);
         return;
       }
 
       let available = (writeHead - prevHead.current + bufSize) % bufSize;
 
-      // Safe initialization to prevent massive first-frame redraws if disconnected for a while
       if (prevHead.current === -1) {
-        const maxInitial = Math.round(width / pxPerSample);
-        prevHead.current = (writeHead - maxInitial + bufSize) % bufSize;
-        available = maxInitial;
+        prevHead.current = (writeHead - Math.round(width / pxPerSample) + bufSize) % bufSize;
+        available = Math.round(width / pxPerSample);
       }
 
       const maxPerFrame = Math.ceil(width / pxPerSample);

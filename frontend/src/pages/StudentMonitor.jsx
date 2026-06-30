@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import socket from "../socket";
 import useMonitorStore from "../store/monitorStore";
-import WaveformCanvas from "../components/monitor/WaveformCanvas";
+import { connect, disconnect } from "../engine/wsClient";
 import AlarmBar from "../components/monitor/AlarmBar";
 import EyesPanel from "../components/monitor/EyesPanel";
 import VitalsPanel from "../components/monitor/VitalsPanel";
+import WaveformStack from "../components/monitor/WaveformStack";
 
 // InlineReadings displays vitals horizontally above the canvas (retained as unused helper or clean up)
 function InlineReadings() {
@@ -100,6 +101,8 @@ export default function StudentMonitor() {
     } else {
       doJoin();
     }
+    
+    connect(); // Connect to simman-ecg engine
 
     // ── Event handlers ──────────────────────────────────────
     const handleJoinConfirmed = (data) => {
@@ -166,6 +169,7 @@ export default function StudentMonitor() {
       socket.off("faculty_comment", handleFacultyComment);
       socket.off("scenario_selected", handleScenarioSelected);
       socket.off("connect", doJoin);
+      disconnect(); // Disconnect from simman-ecg engine
     };
   }, [sessionCode, setFullState]);
 
@@ -265,8 +269,8 @@ export default function StudentMonitor() {
         </div>
 
         {/* Center: waveforms */}
-        <div className="student-waveforms-center">
-          <WaveformCanvas />
+        <div className="student-waveforms-center waveform-container">
+          <WaveformStack lead="II" />
         </div>
 
         {/* Right: scenario card */}

@@ -6,6 +6,7 @@ import PlethTrack from "../components/monitor/PlethTrack";
 import ABPTrack from "../components/monitor/ABPTrack";
 import PAPTrack from "../components/monitor/PAPTrack";
 import ETCO2Track from "../components/monitor/ETCO2Track";
+import CustomRhythmSelect from "../components/ui/CustomRhythmSelect";
 import {
   RHYTHM_GROUPS, RHYTHM_LABELS, RHYTHM_INTELLIGENCE, ALL_LEADS,
   type RhythmType, type ArtifactType, type TransferFn, type LeadName,
@@ -364,18 +365,10 @@ export default function UnifiedDashboard() {
               </div>
             </div>
 
-            <div className="control-card">
+            <div className="control-card rhythm-card">
               <h3>Cardiac Rhythm</h3>
               <p className="control-help">Select rhythm to instantly override the engine.</p>
-              <select className="rhythm-select" value={rhythm} onChange={(e) => handleRhythmChange(e.target.value as RhythmType)}>
-                {RHYTHM_GROUPS.map((group) => (
-                  <optgroup key={group.label} label={group.label}>
-                    {group.rhythms.map((r) => (
-                      <option key={r} value={r}>{RHYTHM_LABELS[r]}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+              <CustomRhythmSelect value={rhythm} onChange={handleRhythmChange} />
             </div>
 
             <div className="control-card">

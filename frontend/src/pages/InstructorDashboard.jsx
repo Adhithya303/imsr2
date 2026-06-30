@@ -2,15 +2,23 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import socket from "../socket";
 import useMonitorStore from "../store/monitorStore";
-import WaveformCanvas from "../components/monitor/WaveformCanvas";
+import { connect, disconnect } from "../engine/wsClient";
+import ECGTrack from "../components/monitor/ECGTrack";
+import PlethTrack from "../components/monitor/PlethTrack";
+import ABPTrack from "../components/monitor/ABPTrack";
+import PAPTrack from "../components/monitor/PAPTrack";
+import ETCO2Track from "../components/monitor/ETCO2Track";
+import { useECGStore } from "../store/ecgStore";
 import VitalsPanel from "../components/monitor/VitalsPanel";
 import AlarmBar from "../components/monitor/AlarmBar";
+import UnifiedPanel from "../components/instructor/UnifiedPanel";
 import CardiacControls from "../components/instructor/CardiacControls";
 import SimulationControl from "../components/instructor/SimulationControl";
 import ParameterDialog from "../components/dialogs/ParameterDialog";
 import SetArterialBP from "../components/dialogs/SetArterialBP";
 import SetSpO2 from "../components/dialogs/SetSpO2";
 import SetPeripheralTemp from "../components/dialogs/SetPeripheralTemp";
+import { getEngineRhythm } from "../utils/rhythms";
 
 const API = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
@@ -57,6 +65,7 @@ export default function InstructorDashboard() {
 
       if (!socket.connected) socket.connect();
       socket.emit("join_session", { session_code: data.session_code, token });
+      connect(); // Connect to simman-ecg engine
     };
 
     initSession();
@@ -82,8 +91,38 @@ export default function InstructorDashboard() {
       socket.off("session_event", handleSessionEvent);
       socket.off("session_ended", handleSessionEnded);
       socket.off("error", handleError);
+      disconnect(); // Disconnect simman-ecg engine
     };
   }, [navigate, setFullState, appendEvent, setSessionEnded]);
+
+  // Sync monitor store state to ECG engine websocket
+  useEffect(() => {
+    const store = useMonitorStore.getState();
+    const sendCommand = useECGStore.getState().sendCommand;
+    if (sendCommand && store.HR !== undefined) {
+      sendCommand({
+        heart_rate: store.HR,
+        sys_bp: store.ABP_sys,
+        dia_bp: store.ABP_dia,
+        pap_sys: store.PAP_sys,
+        pap_dia: store.PAP_dia,
+        spo2: store.SpO2,
+        resp_rate: store.avRR,
+        etco2: store.etCO2,
+        rhythm: getEngineRhythm(store.rhythm)
+      });
+    }
+  }, [
+    useMonitorStore((s) => s.HR),
+    useMonitorStore((s) => s.ABP_sys),
+    useMonitorStore((s) => s.ABP_dia),
+    useMonitorStore((s) => s.PAP_sys),
+    useMonitorStore((s) => s.PAP_dia),
+    useMonitorStore((s) => s.SpO2),
+    useMonitorStore((s) => s.avRR),
+    useMonitorStore((s) => s.etCO2),
+    useMonitorStore((s) => s.rhythm)
+  ]);
 
   // Scenario socket listeners
   useEffect(() => {
@@ -339,85 +378,44 @@ export default function InstructorDashboard() {
 
         {/* Right column — tabbed */}
         <div className="instructor-right">
-          <div className="tab-bar">
-            <button
-              className={`tab-btn ${activeTab === "monitor" ? "tab-active" : ""}`}
-              onClick={() => setActiveTab("monitor")}
-            >
-              Patient Monitor
-            </button>
-            <button
-              className={`tab-btn ${activeTab === "cardiac" ? "tab-active" : ""}`}
-              onClick={() => setActiveTab("cardiac")}
-            >
-              Cardiac Controls
-            </button>
-          </div>
-
-          <div className="tab-content">
-            {activeTab === "monitor" && (
-              <div className="instructor-monitor-layout">
-                {/* Top: compact waveform + readings */}
-                <div className="instructor-monitor-top">
-                  <div className="mini-monitor">
-                    <AlarmBar />
-                    <div className="mini-monitor-body">
-                      <div className="mini-waveforms">
-                        <WaveformCanvas onChannelClick={handleVitalClick} />
-                      </div>
-                      <div className="mini-vitals">
-                        <VitalsPanel onVitalClick={handleVitalClick} compact={true} />
-                      </div>
-                    </div>
-                  </div>
+          <UnifiedPanel scenarioContent={
+            <>
+              <div className="scenario-panel-header">
+                <span className="scenario-panel-title">📋 Scenario</span>
+                <div className="scenario-panel-actions">
+                  <button className="btn-classic btn-sm" onClick={requestRandomScenario}>
+                    🎲 Random
+                  </button>
+                  <button className="btn-classic btn-sm" onClick={openScenarioList}>
+                    📄 Choose
+                  </button>
                 </div>
+              </div>
 
-                {/* Bottom: scenario panel */}
-                <div className="instructor-scenario-panel">
-                  <div className="scenario-panel-header">
-                    <span className="scenario-panel-title">📋 Scenario</span>
-                    <div className="scenario-panel-actions">
-                      <button className="btn-classic btn-sm" onClick={requestRandomScenario}>
-                        🎲 Random
-                      </button>
-                      <button className="btn-classic btn-sm" onClick={openScenarioList}>
-                        📄 Choose
-                      </button>
-                    </div>
+              {scenario ? (
+                <div className="scenario-card-full">
+                  <div className="scenario-card-section">
+                    <h4 className="scenario-card-section-title">Patient Details</h4>
+                    {renderPatientDetails(scenario.patient_details)}
                   </div>
-
-                  {scenario ? (
-                    <div className="scenario-card-full">
-                      <div className="scenario-card-section">
-                        <h4 className="scenario-card-section-title">Patient Details</h4>
-                        {renderPatientDetails(scenario.patient_details)}
-                      </div>
-                      <div className="scenario-card-section">
-                        <h4 className="scenario-card-section-title">Symptoms</h4>
-                        {renderSymptoms(scenario.symptoms)}
-                      </div>
-                      {scenario.initial_readings && (
-                        <div className="scenario-card-section">
-                          <h4 className="scenario-card-section-title">Initial Readings</h4>
-                          {renderInitialReadings(scenario.initial_readings)}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="scenario-empty">
-                      <p>No scenario loaded. Click <strong>🎲 Random</strong> or <strong>📄 Choose</strong> to select one.</p>
+                  <div className="scenario-card-section">
+                    <h4 className="scenario-card-section-title">Symptoms</h4>
+                    {renderSymptoms(scenario.symptoms)}
+                  </div>
+                  {scenario.initial_readings && (
+                    <div className="scenario-card-section">
+                      <h4 className="scenario-card-section-title">Initial Readings</h4>
+                      {renderInitialReadings(scenario.initial_readings)}
                     </div>
                   )}
                 </div>
-              </div>
-            )}
-            {activeTab === "cardiac" && (
-              <CardiacControls
-                sessionCode={sessionCode}
-                onClose={() => setActiveTab("monitor")}
-              />
-            )}
-          </div>
+              ) : (
+                <div className="scenario-empty">
+                  <p>No scenario loaded. Click <strong>🎲 Random</strong> or <strong>📄 Choose</strong> to select one.</p>
+                </div>
+              )}
+            </>
+          } />
         </div>
       </div>
 
