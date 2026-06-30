@@ -324,8 +324,55 @@ html, body, #root {
 .mini-monitor-body {
   flex: 1; display: flex; overflow: hidden;
 }
-.mini-waveforms { flex: 3; min-width: 0; }
-.mini-vitals { flex: 2; min-width: 200px; }
+.mini-waveforms { flex: 1; min-width: 0; }
+.mini-vitals {
+  width: 320px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--outline-variant);
+  background: #050505;
+  overflow-y: auto;
+}
+
+/* Compact vital styles inside mini-vitals */
+.mini-vitals .vitals-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 3px;
+  padding: 4px;
+  background: transparent;
+  height: auto;
+  overflow: visible;
+}
+.mini-vitals .vital-brick {
+  padding: 4px 6px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 4px;
+}
+.mini-vitals .vital-brick-label {
+  font-size: 8px;
+  margin-bottom: 1px;
+}
+.mini-vitals .vital-value-row {
+  gap: 4px;
+  padding: 1px 0;
+}
+.mini-vitals .vital-sublabel {
+  font-size: 8px;
+  min-width: 25px;
+}
+.mini-vitals .vital-unit {
+  font-size: 8px;
+}
+.mini-vitals .text-5xl, .mini-vitals .text-2xl {
+  font-size: 15px !important;
+}
+.mini-vitals .text-3xl, .mini-vitals .text-xl {
+  font-size: 13px !important;
+}
+.mini-vitals .text-2xl, .mini-vitals .text-lg {
+  font-size: 11px !important;
+}
 
 /* ── Body Diagram ──────────────────────────────────────────────── */
 .body-diagram {
@@ -341,29 +388,32 @@ html, body, #root {
 }
 .sim-timer {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    justify-content: space-between;
     align-items: center;
-    padding: 6px; /* 50% reduction */
+    padding: 4px 8px;
     background: var(--surface-container);
     border: 1px solid var(--outline-variant);
+    border-radius: 4px;
+    gap: 8px;
 }
 .sim-timer-label {
-    font-size: 8px; /* reduced */
+    font-size: 9px;
     font-weight: 700;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.05em;
     color: var(--on-surface-muted);
 }
 .sim-timer-value {
-    font-size: 16px; /* reduced */
+    font-size: 13px;
     font-weight: 700;
     font-family: var(--font-mono);
     color: var(--primary);
 }
 .sim-session-code {
-    font-size: 9px; /* reduced */
+    font-size: 10px;
     font-family: var(--font-mono);
     color: var(--alarm-gold);
-    margin-top: 2px;
+    margin-top: 0;
 }
 
 .sim-section-header {
@@ -794,9 +844,8 @@ html, body, #root {
   height: 100%;
 }
 .student-monitor-right {
-  flex: 1.2;
-  min-width: 320px;
-  max-width: 450px;
+  width: 380px;
+  flex-shrink: 0;
   background: var(--surface-dim);
   border-left: 1px solid var(--outline-variant);
   padding: 16px;
@@ -812,6 +861,20 @@ html, body, #root {
   padding: 8px 12px;
   background: #000;
   border-bottom: 1px solid var(--outline-variant);
+}
+
+.student-vitals-left {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--void);
+  border-right: 1px solid var(--outline-variant);
+  overflow-y: auto;
+}
+
+.student-waveforms-center {
+  flex: 1;
+  min-width: 0;
+  background: var(--void);
 }
 
 .inline-reading-box {
@@ -926,8 +989,8 @@ html, body, #root {
 }
 
 .instructor-monitor-top {
-  flex: 1.2;
-  min-height: 240px;
+  height: 200px;
+  flex-shrink: 0;
   border-bottom: 1px solid var(--outline-variant);
 }
 
@@ -964,7 +1027,7 @@ html, body, #root {
 
 .scenario-card-full {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1.2fr 1fr 1.2fr;
   gap: 16px;
   background: var(--surface-container);
   border: 1px solid var(--outline-variant);

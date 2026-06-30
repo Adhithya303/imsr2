@@ -51,6 +51,7 @@ const useMonitorStore = create((set, get) => ({
   started_at: null,
   last_updated: null,
   updated_by: "",
+  initial_readings_hidden: false,
 
   // Event log (appended via session_event)
   eventLog: [],

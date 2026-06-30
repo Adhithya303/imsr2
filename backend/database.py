@@ -47,6 +47,17 @@ async def init_db():
                 )
             """)
 
+            # Scenarios table
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS scenarios (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    patient_details JSON NOT NULL,
+                    symptoms JSON NOT NULL,
+                    initial_readings JSON NOT NULL
+                )
+            """)
+
             # Sessions table
             await cur.execute("""
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -58,7 +69,9 @@ async def init_db():
                     is_active BOOLEAN NOT NULL DEFAULT 1,
                     event_log JSON,
                     history JSON,
-                    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+                    current_scenario_id INT,
+                    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
+                    FOREIGN KEY (current_scenario_id) REFERENCES scenarios(id) ON DELETE SET NULL
                 )
             """)
 
@@ -70,6 +83,49 @@ async def init_db():
                     FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
                 )
             """)
+            
+            # Alter table in case it was already created without current_scenario_id
+            await cur.execute("SHOW COLUMNS FROM sessions LIKE 'current_scenario_id'")
+            has_col = await cur.fetchone()
+            if not has_col:
+                try:
+                    await cur.execute("ALTER TABLE sessions ADD COLUMN current_scenario_id INT NULL")
+                    await cur.execute("ALTER TABLE sessions ADD CONSTRAINT fk_sessions_scenarios FOREIGN KEY (current_scenario_id) REFERENCES scenarios(id) ON DELETE SET NULL")
+                except Exception as e:
+                    print(f"[DB] Info: constraint or column may already exist: {e}")
+
+            # Seed scenarios if table is empty
+            await cur.execute("SELECT COUNT(*) as count FROM scenarios")
+            count_res = await cur.fetchone()
+            if count_res and count_res[0] == 0:
+                print("[SEED] Seeding scenarios from patient_monitor_scenarios_20.json...")
+                json_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "patient_monitor_scenarios_20.json"))
+                if os.path.exists(json_path):
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    
+                    scenarios_to_seed = []
+                    for idx, sc in enumerate(data.get("scenarios", [])):
+                        pd = sc.get("patientDetails", {})
+                        symp = sc.get("symptoms", {})
+                        mv = sc.get("monitorValues", {})
+                        
+                        name = pd.get("patientName", f"Scenario {idx + 1}")
+                        scenarios_to_seed.append((
+                            name,
+                            json.dumps(pd),
+                            json.dumps(symp),
+                            json.dumps(mv)
+                        ))
+                    
+                    if scenarios_to_seed:
+                        await cur.executemany(
+                            "INSERT INTO scenarios (name, patient_details, symptoms, initial_readings) VALUES (%s, %s, %s, %s)",
+                            scenarios_to_seed
+                        )
+                        print(f"[SEED] Seeded {len(scenarios_to_seed)} scenarios.")
+                else:
+                    print(f"[SEED] WARNING: patient_monitor_scenarios_20.json not found at {json_path}")
             
     print(f"[DB] Connected to local MySQL — database: {DB_NAME}")
 

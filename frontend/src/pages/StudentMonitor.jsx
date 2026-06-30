@@ -5,8 +5,9 @@ import useMonitorStore from "../store/monitorStore";
 import WaveformCanvas from "../components/monitor/WaveformCanvas";
 import AlarmBar from "../components/monitor/AlarmBar";
 import EyesPanel from "../components/monitor/EyesPanel";
+import VitalsPanel from "../components/monitor/VitalsPanel";
 
-// InlineReadings displays vitals horizontally above the canvas
+// InlineReadings displays vitals horizontally above the canvas (retained as unused helper or clean up)
 function InlineReadings() {
   const state = useMonitorStore();
   
@@ -258,12 +259,14 @@ export default function StudentMonitor() {
     <div className="student-monitor">
       <AlarmBar />
       <div className="monitor-main">
-        {/* Left: waveforms + inline readings above */}
-        <div className="student-monitor-left">
-          <InlineReadings />
-          <div className="monitor-waveforms">
-            <WaveformCanvas />
-          </div>
+        {/* Left: readings values */}
+        <div className="student-vitals-left">
+          <VitalsPanel onVitalClick={null} compact={false} isStudent={true} />
+        </div>
+
+        {/* Center: waveforms */}
+        <div className="student-waveforms-center">
+          <WaveformCanvas />
         </div>
 
         {/* Right: scenario card */}

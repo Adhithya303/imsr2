@@ -66,9 +66,10 @@ const COMPACT_SIZE_CLASSES = {
   md: "text-lg font-bold font-mono",
 };
 
-export default function VitalsPanel({ onVitalClick, compact }) {
+export default function VitalsPanel({ onVitalClick, compact, isStudent }) {
   const state = useMonitorStore();
   const classes = compact ? COMPACT_SIZE_CLASSES : SIZE_CLASSES;
+  const isHidden = isStudent && state.initial_readings_hidden;
 
   return (
     <div className="vitals-panel">
@@ -79,13 +80,17 @@ export default function VitalsPanel({ onVitalClick, compact }) {
           </div>
           {group.items.map((item) => {
             const val = state[item.key];
-            const displayVal = item.paired
+            let displayVal = item.paired
               ? `${Math.round(val)}/${Math.round(state[item.paired])}`
               : typeof val === "number"
               ? val % 1 === 0
                 ? val
                 : val.toFixed(1)
               : val;
+
+            if (isHidden) {
+              displayVal = item.paired ? "--/--" : "--";
+            }
 
             return (
               <div

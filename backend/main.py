@@ -29,7 +29,7 @@ from models import (
     DEFAULT_MONITOR_STATE,
     PARAMETER_SPEC,
 )
-from socket_manager import sio, emit_session_ended
+from socket_manager import sio, emit_session_ended, load_scenarios_to_cache
 
 
 # ── Lifespan ──────────────────────────────────────────────────────
@@ -37,6 +37,7 @@ from socket_manager import sio, emit_session_ended
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await load_scenarios_to_cache()
     
     pool = await get_db_pool()
     async with pool.acquire() as conn:
