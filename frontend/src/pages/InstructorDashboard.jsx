@@ -98,19 +98,27 @@ export default function InstructorDashboard() {
   // Sync monitor store state to ECG engine websocket
   useEffect(() => {
     const store = useMonitorStore.getState();
-    const sendCommand = useECGStore.getState().sendCommand;
+    const engineStore = useECGStore.getState();
+    const sendCommand = engineStore.sendCommand;
     if (sendCommand && store.HR !== undefined) {
-      sendCommand({
-        heart_rate: store.HR,
-        sys_bp: store.ABP_sys,
-        dia_bp: store.ABP_dia,
-        pap_sys: store.PAP_sys,
-        pap_dia: store.PAP_dia,
-        spo2: store.SpO2,
-        resp_rate: store.avRR,
-        etco2: store.etCO2,
-        rhythm: getEngineRhythm(store.rhythm)
-      });
+      const update = {};
+      const differs = (left, right) => Math.abs(Number(left) - Number(right)) >= 0.5;
+
+      if (differs(engineStore.heartRate, store.HR)) update.heart_rate = store.HR;
+      if (differs(engineStore.sysBP, store.ABP_sys)) update.sys_bp = store.ABP_sys;
+      if (differs(engineStore.diaBP, store.ABP_dia)) update.dia_bp = store.ABP_dia;
+      if (differs(engineStore.papSys, store.PAP_sys)) update.pap_sys = store.PAP_sys;
+      if (differs(engineStore.papDia, store.PAP_dia)) update.pap_dia = store.PAP_dia;
+      if (differs(engineStore.spo2, store.SpO2)) update.spo2 = store.SpO2;
+      if (differs(engineStore.respRate, store.avRR)) update.resp_rate = store.avRR;
+      if (differs(engineStore.etco2, store.etCO2)) update.etco2 = store.etCO2;
+
+      const engineRhythm = getEngineRhythm(store.rhythm);
+      if (engineStore.rhythm !== engineRhythm) update.rhythm = engineRhythm;
+
+      if (Object.keys(update).length > 0) {
+        sendCommand(update);
+      }
     }
   }, [
     useMonitorStore((s) => s.HR),

@@ -7,7 +7,7 @@ import ETCO2Track from "./ETCO2Track";
 
 const TRACK_COUNT = 5;
 const TRACK_GAP = 8;
-const MAX_TRACK_HEIGHT = 96;
+const MAX_TRACK_HEIGHT = 104;
 
 export default function WaveformStack({ lead = "II" }) {
   const stackRef = useRef(null);
@@ -40,12 +40,17 @@ export default function WaveformStack({ lead = "II" }) {
     return { width, height };
   }, [size]);
 
+  const plethGain = useMemo(
+    () => Math.max(8, Math.min(42, (trackSize.height - 31) / 1.75)),
+    [trackSize.height]
+  );
+
   return (
     <div ref={stackRef} className="waveform-stack">
       {size.width > 0 && size.height > 0 && (
         <>
           <ECGTrack lead={lead} width={trackSize.width} height={trackSize.height} />
-          <PlethTrack width={trackSize.width} height={trackSize.height} gain={42} />
+          <PlethTrack width={trackSize.width} height={trackSize.height} gain={plethGain} />
           <ABPTrack width={trackSize.width} height={trackSize.height} />
           <PAPTrack width={trackSize.width} height={trackSize.height} />
           <ETCO2Track width={trackSize.width} height={trackSize.height} />
