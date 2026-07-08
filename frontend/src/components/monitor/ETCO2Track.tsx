@@ -32,7 +32,7 @@ export default function ETCO2Track({ width = 900, height = 110, paperSpeed = 25 
     const pxPerSample = (paperSpeed * GRID_MM_PX) / SAMPLE_RATE;
     const bufSize = bufferRef.ETCO2.length;
 
-    bgCtx.fillStyle = "#070b0f";
+    bgCtx.fillStyle = "#12161a";
     bgCtx.fillRect(0, 0, width, height);
     bgCtx.beginPath();
     for (let x = 0; x <= width; x += GRID_MM_PX) {
@@ -43,7 +43,7 @@ export default function ETCO2Track({ width = 900, height = 110, paperSpeed = 25 
       bgCtx.moveTo(0, y);
       bgCtx.lineTo(width, y);
     }
-    bgCtx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+    bgCtx.strokeStyle = "rgba(255, 255, 255, 0.16)";
     bgCtx.lineWidth = 0.5;
     bgCtx.stroke();
 
@@ -56,7 +56,7 @@ export default function ETCO2Track({ width = 900, height = 110, paperSpeed = 25 
       bgCtx.moveTo(0, y);
       bgCtx.lineTo(width, y);
     }
-    bgCtx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+    bgCtx.strokeStyle = "rgba(255, 255, 255, 0.32)";
     bgCtx.lineWidth = 0.8;
     bgCtx.stroke();
 

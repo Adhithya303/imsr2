@@ -37,7 +37,7 @@ export default function PlethTrack({ width = 900, height = 150, paperSpeed = 25,
     const bufSize     = bufferRef["PLETH"]?.length || 0;
 
     // ── Draw static background grid ──────────────────────────────────────────
-    bgCtx.fillStyle = "#070b0f";
+    bgCtx.fillStyle = "#0c141a";
     bgCtx.fillRect(0, 0, width, height);
 
     bgCtx.beginPath();
@@ -47,7 +47,7 @@ export default function PlethTrack({ width = 900, height = 150, paperSpeed = 25,
     for (let y = 0; y <= height; y += GRID_MM_PX) {
       bgCtx.moveTo(0, y); bgCtx.lineTo(width, y);
     }
-    bgCtx.strokeStyle = "rgba(0,160,70,0.05)";
+    bgCtx.strokeStyle = "rgba(0, 255, 255, 0.18)";
     bgCtx.lineWidth = 0.5;
     bgCtx.stroke();
 
@@ -58,7 +58,7 @@ export default function PlethTrack({ width = 900, height = 150, paperSpeed = 25,
     for (let y = 0; y <= height; y += GRID_MM_PX * 5) {
       bgCtx.moveTo(0, y); bgCtx.lineTo(width, y);
     }
-    bgCtx.strokeStyle = "rgba(0,180,80,0.1)";
+    bgCtx.strokeStyle = "rgba(0, 255, 255, 0.35)";
     bgCtx.lineWidth = 0.8;
     bgCtx.stroke();
 

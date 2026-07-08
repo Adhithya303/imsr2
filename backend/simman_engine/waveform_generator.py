@@ -18,6 +18,8 @@ import numpy as np
 from dataclasses import dataclass
 from ecg_state import ECGState, RhythmType, TransferFn
 from simman_engine.rhythm_intelligence import get_wave_visibility
+from simman_engine.co2_generator import _co2_at_phase, Co2State
+from simman_engine.abp_generator import abp_equation
 
 
 # ─── Wave descriptor ──────────────────────────────────────────────────────────
@@ -62,11 +64,11 @@ class RhythmTransition:
 
 def _nsr() -> BeatParams:
     return BeatParams(
-        p = Wave( 0.15,  0.13, 0.030),
+        p = Wave( 0.12,  0.12, 0.024),
         q = Wave(-0.05,  0.38, 0.012),
         r = Wave( 1.00,  0.41, 0.015),
         s = Wave(-0.15,  0.44, 0.012),
-        t = Wave( 0.30,  0.65, 0.060),
+        t = Wave( 0.26,  0.65, 0.050),
     )
 
 
@@ -81,22 +83,8 @@ def get_beat_params(state: ECGState, rhythm: RhythmType | None = None) -> BeatPa
         r = RhythmType.NSR
 
     # ── Pure morphology rhythms ──────────────────────────────────────────────
-    if r in (RhythmType.NSR, RhythmType.PAC):
+    if r in (RhythmType.NSR, RhythmType.PAC, RhythmType.SINUS_BRADY, RhythmType.SINUS_TACHY, RhythmType.AVB1):
         return _nsr()
-
-    if r == RhythmType.SINUS_BRADY:
-        # Slower sinus activation commonly makes P and T waves more distinct.
-        bp = _nsr()
-        bp.p = Wave(0.17, 0.12, 0.026)
-        bp.t = Wave(0.34, 0.62, 0.055)
-        return bp
-
-    if r == RhythmType.SINUS_TACHY:
-        # Physiological rate compression: P approaches the preceding T wave.
-        bp = _nsr()
-        bp.p = Wave(0.12, 0.11, 0.025)
-        bp.t = Wave(0.24, 0.61, 0.050)
-        return bp
 
     if r == RhythmType.PEA:
         # PEA retains organised electrical activity; low-voltage morphology
@@ -116,9 +104,8 @@ def get_beat_params(state: ECGState, rhythm: RhythmType | None = None) -> BeatPa
         return bp
 
     if r == RhythmType.AFLUTTER:
-        # Sawtooth P waves (approximate with inverted P at 300 bpm)
         bp = _nsr()
-        bp.p = Wave(-0.20, 0.10, 0.045)   # inverted, broader
+        bp.p = None
         return bp
 
     if r == RhythmType.JUNCTIONAL:
@@ -127,16 +114,6 @@ def get_beat_params(state: ECGState, rhythm: RhythmType | None = None) -> BeatPa
         bp.p = Wave(-0.10, 0.55, 0.020)
         return bp
 
-    if r == RhythmType.AVB1:
-        # Prolonged PR — shift QRS & T forward relative to P
-        bp = _nsr()
-        pr_fraction = state.pr_interval / 1000.0 * state.heart_rate / 60.0
-        shift = min(pr_fraction - 0.19, 0.15)   # shift QRS/T right
-        bp.q.center += shift
-        bp.r.center += shift
-        bp.s.center += shift
-        bp.t.center += shift
-        return bp
 
     if r in (RhythmType.AVB2_I, RhythmType.AVB2_II):
         # Handled beat-level in rhythm_engine; morphology same as NSR
@@ -256,6 +233,16 @@ class WaveformGenerator:
         self._last_rr_factors: np.ndarray | None = None
         self._running_pleth_val: float = 0.0
         self._resp_phase: float = 0.0
+        self._resp_wander_phase: float = 0.0
+        self._r_amp_factor: float = 1.0
+        self._t_amp_factor: float = 1.0
+        self._abp_sys_var: float = 0.0
+        self._abp_dia_var: float = 0.0
+        self._last_resp_phases: np.ndarray | None = None
+        self._pleth_amp_var: float = 1.0
+        self._pap_sys_var: float = 0.0
+        self._pap_dia_var: float = 0.0
+        self._qrs_amp_var: float = 1.0
 
     def begin_rhythm_transition(
         self,
@@ -289,7 +276,7 @@ class WaveformGenerator:
             self._last_phases = np.zeros(n_samples, dtype=np.float32)
             self._last_beat_indices = np.zeros(n_samples, dtype=np.int64)
             self._last_rr_factors = np.ones(n_samples, dtype=np.float32)
-            return signal
+            return (signal + np.random.normal(0.0, 0.003, n_samples)).astype(np.float32)
         if transition is not None and transition.done:
             self._rhythm_transition = None
             transition = None
@@ -298,12 +285,12 @@ class WaveformGenerator:
             self._last_phases = np.zeros(n_samples, dtype=np.float32)
             self._last_beat_indices = np.zeros(n_samples, dtype=np.int64)
             self._last_rr_factors = np.ones(n_samples, dtype=np.float32)
-            return self._vf(n_samples)
+            return (self._vf(n_samples) + np.random.normal(0.0, 0.003, n_samples)).astype(np.float32)
         if transition is None and target_rhythm == RhythmType.ASYSTOLE:
             self._last_phases = np.zeros(n_samples, dtype=np.float32)
             self._last_beat_indices = np.zeros(n_samples, dtype=np.int64)
             self._last_rr_factors = np.ones(n_samples, dtype=np.float32)
-            return signal
+            return (signal + np.random.normal(0.0, 0.003, n_samples)).astype(np.float32)
 
         params_target = get_beat_params(state, target_rhythm)
         params_source = get_beat_params(state, transition.source) if transition is not None else params_target
@@ -350,6 +337,22 @@ class WaveformGenerator:
         self._last_phases = phases
         self._last_beat_indices = beat_indices
         self._last_rr_factors = rr_factors
+
+        # Pre-calculate continuous respiratory phase array for synchronization across all waveforms
+        resp_phases = np.zeros(n_samples, dtype=np.float32)
+        for i in range(n_samples):
+            resp_phases[i] = self._resp_wander_phase
+            self._resp_wander_phase += 0.20 / self.fs
+            if self._resp_wander_phase >= 1.0:
+                self._resp_wander_phase -= 1.0
+        self._last_resp_phases = resp_phases
+
+        # Inject subtle respiratory baseline wander and monitor noise
+        for i in range(n_samples):
+            wander = 0.02 * np.sin(2 * np.pi * self._last_resp_phases[i])
+            noise = float(np.random.normal(0.0, 0.003))
+            signal[i] += wander + noise
+
         return signal
 
     def generate_pleth(self, state: ECGState, n_samples: int) -> np.ndarray:
@@ -410,7 +413,8 @@ class WaveformGenerator:
                 float(self._last_rr_factors[i]),
                 hr,
             )
-            target_pleth = pleth_shape * cardiac_output_scale * current_pulse_scale
+            resp_mod = 1.0 + 0.02 * np.sin(2 * np.pi * self._last_resp_phases[i])
+            target_pleth = pleth_shape * cardiac_output_scale * current_pulse_scale * self._pleth_amp_var * resp_mod
             self._running_pleth_val += (
                 target_pleth - self._running_pleth_val
             ) * hemodynamic_smoothing
@@ -446,11 +450,7 @@ class WaveformGenerator:
 
     def generate_abp(self, state: ECGState, n_samples: int) -> np.ndarray:
         """
-        Generate a continuous invasive arterial-pressure trace.
-
-        The pulse uses the same gamma-variate equation as the ABP reference
-        project, with its calibrated rise/notch fractions. It is evaluated from
-        the live cardiac phase rather than replaying or tiling a stored beat.
+        Generate a continuous invasive arterial-pressure trace using the clinically accurate abp_equation.
         """
         signal = np.zeros(n_samples, dtype=np.float32)
         if (
@@ -470,19 +470,16 @@ class WaveformGenerator:
 
         hr = state.heart_rate
         beat_period = 60.0 / hr
-        pulse_pressure = max(0.0, state.sys_bp - state.dia_bp)
-        if pulse_pressure <= 0.0:
-            signal.fill(max(0.0, float(state.dia_bp)))
-            return signal
+        
+        # Clinical parameters from the validated ABP generator config
+        rise_fraction = 0.28
+        notch_depth_base = 15.0
+        notch_timing_fraction = 0.42
+        notch_sigma_fraction = 0.05
 
-        # Reference-project equation style with live-engine tuning:
-        # quick systolic upstroke, rounded systolic peak, visible dicrotic
-        # notch/shoulder, and a long gamma-variate diastolic runoff.  The
-        # runoff intentionally remains slightly above DIA at end-cycle; this
-        # creates the elongated descending limb seen on bedside ABP monitors.
-        rise_fraction = 0.24
-        notch_fraction = float(np.clip(0.40 - ((hr - 60.0) * 0.00107), 0.28, 0.46))
-        notch_sigma_fraction = float(np.clip(0.045 * (70.0 / hr), 0.030, 0.055))
+        rise_time = rise_fraction * beat_period
+        notch_time = notch_timing_fraction * beat_period
+        notch_sigma = notch_sigma_fraction * beat_period
 
         # Arterial pulse foot follows the electrical R wave by about 120 ms.
         r_phase = 0.41
@@ -491,6 +488,14 @@ class WaveformGenerator:
         for i in range(n_samples):
             cardiac_phase = float(self._last_phases[i])
             hemo_phase = (cardiac_phase - r_phase - delay_phase) % 1.0
+            t_sample = hemo_phase * beat_period
+
+            # Continuous respiratory modulation
+            resp_mod = 2.5 * np.sin(2 * np.pi * self._last_resp_phases[i])
+
+            # Apply beat-to-beat pressure variability
+            sys_val = state.sys_bp + self._abp_sys_var + resp_mod
+            dia_val = state.dia_bp + self._abp_dia_var + resp_mod
 
             pulse_factor = self._abp_pulse_factor(
                 rhythm,
@@ -498,14 +503,20 @@ class WaveformGenerator:
                 float(self._last_rr_factors[i]),
                 hr,
             )
-            effective_pp = pulse_pressure * pulse_factor
-            val = self._abp_pressure(
-                hemo_phase,
-                float(state.dia_bp),
-                effective_pp,
-                rise_fraction,
-                notch_fraction,
-                notch_sigma_fraction,
+
+            # scale pulse pressure by the rhythm-dependent pulse factor
+            effective_sys = dia_val + max(0.0, sys_val - dia_val) * pulse_factor
+            effective_dia = dia_val
+            effective_notch_depth = notch_depth_base * pulse_factor
+
+            val = abp_equation(
+                t_sample,
+                effective_sys,
+                effective_dia,
+                rise_time,
+                effective_notch_depth,
+                notch_time,
+                notch_sigma
             )
             signal[i] = max(0.0, float(val))
 
@@ -552,16 +563,25 @@ class WaveformGenerator:
         for i in range(n_samples):
             cardiac_phase = float(self._last_phases[i])
             hemo_phase = (cardiac_phase - r_phase - delay_phase) % 1.0
+            
+            # Continuous respiratory modulation (±1.0 mmHg)
+            resp_mod = 1.0 * np.sin(2 * np.pi * self._last_resp_phases[i])
+            
+            # Apply beat-to-beat pressure variability
+            sys_val = pap_sys + self._pap_sys_var + resp_mod
+            dia_val = pap_dia + self._pap_dia_var + resp_mod
+
             pulse_factor = self._abp_pulse_factor(
                 rhythm,
                 int(self._last_beat_indices[i]),
                 float(self._last_rr_factors[i]),
                 hr,
             )
+            effective_pp = max(0.0, sys_val - dia_val) * pulse_factor
             pressure = self._abp_pressure(
                 hemo_phase,
-                pap_dia,
-                pulse_pressure * pulse_factor,
+                dia_val,
+                effective_pp,
                 rise_fraction,
                 notch_fraction,
                 notch_sigma_fraction,
@@ -572,10 +592,7 @@ class WaveformGenerator:
 
     def generate_etco2(self, state: ECGState, n_samples: int) -> np.ndarray:
         """
-        Generate a capnography waveform.
-
-        Shape: near-zero inspiratory baseline, steep expiratory upstroke,
-        mildly sloped alveolar plateau, then rapid inspiratory downstroke.
+        Generate a capnography waveform using the integrated clinical CO2 generator module.
         """
         signal = np.zeros(n_samples, dtype=np.float32)
         if state.resp_rate <= 0.0 or state.etco2 <= 0.0:
@@ -584,13 +601,22 @@ class WaveformGenerator:
 
         rr_sec = 60.0 / state.resp_rate
         step = 1.0 / (rr_sec * self.fs)
+        
+        phases = np.zeros(n_samples, dtype=np.float32)
         for i in range(n_samples):
-            phase = self._resp_phase
-            signal[i] = self._capnogram_sample(phase, float(state.etco2))
+            phases[i] = self._resp_phase
             self._resp_phase += step
             if self._resp_phase >= 1.0:
                 self._resp_phase -= 1.0
-        return signal
+
+        co2_state = Co2State(
+            etco2=float(state.etco2),
+            respiratory_rate=float(state.resp_rate)
+        )
+        
+        co2_vals = _co2_at_phase(phases, co2_state)
+        return co2_vals.astype(np.float32)
+
 
     @staticmethod
     def _abp_pressure(
@@ -612,26 +638,6 @@ class WaveformGenerator:
         notch_depth = pulse_pressure * notch_depth_fraction
         return float(diastolic + pulse_pressure * systolic_term - notch_depth * notch_term)
 
-    @staticmethod
-    def _capnogram_sample(phase: float, etco2: float) -> float:
-        """Educational mainstream capnogram morphology in mmHg."""
-        baseline = 0.0
-        if phase < 0.08:
-            return baseline
-        if phase < 0.20:
-            # Phase II: expiratory upstroke, smooth and steep.
-            x = (phase - 0.08) / 0.12
-            return float(etco2 * (3.0 * x * x - 2.0 * x * x * x) * 0.94)
-        if phase < 0.72:
-            # Phase III: alveolar plateau with a slight upward slope.
-            x = (phase - 0.20) / 0.52
-            return float(etco2 * (0.94 + 0.06 * x))
-        if phase < 0.82:
-            # Inspiration: rapid washout/downstroke.
-            x = (phase - 0.72) / 0.10
-            smooth = 3.0 * x * x - 2.0 * x * x * x
-            return float(etco2 * (1.0 - smooth))
-        return baseline
 
     @staticmethod
     def _abp_pulse_factor(
@@ -697,7 +703,11 @@ class WaveformGenerator:
         """Choose variability once per beat so each RR interval is stable."""
         rhythm = self._coerce_rhythm(rhythm)
         if rhythm == RhythmType.AFIB:
-            return float(np.random.uniform(0.80, 1.20))
+            # Irregularly irregular ventricular rate
+            return float(np.random.uniform(0.75, 1.35))
+        if rhythm == RhythmType.AFLUTTER:
+            # Fixed 2:1 conduction has very small variability (±1%)
+            return float(np.random.uniform(0.99, 1.01))
         params = get_beat_params(state, rhythm)
         sigma = params.rr_jitter + state.hrv_std
         return float(max(np.random.normal(1.0, sigma), 0.65))
@@ -705,6 +715,29 @@ class WaveformGenerator:
     def _on_beat_start(self, state: ECGState, params: BeatParams, rhythm: RhythmType | None = None) -> None:
         """Actions at the start of each new beat."""
         rhythm = self._coerce_rhythm(rhythm if rhythm is not None else state.rhythm)
+        
+        # Beat-to-beat amplitude variability
+        if rhythm in (RhythmType.AFIB, RhythmType.AFLUTTER):
+            self._r_amp_factor = float(np.random.uniform(0.98, 1.02))
+            self._t_amp_factor = float(np.random.uniform(0.98, 1.02))
+        else:
+            self._r_amp_factor = 1.0
+            self._t_amp_factor = 1.0
+
+        # Beat-to-beat ABP pressure variability: systolic ±2 mmHg, diastolic ±1 mmHg
+        self._abp_sys_var = float(np.random.uniform(-2.0, 2.0))
+        self._abp_dia_var = float(np.random.uniform(-1.0, 1.0))
+
+        # Beat-to-beat Pleth variability: amplitude ±3%
+        self._pleth_amp_var = float(np.random.uniform(0.97, 1.03))
+
+        # Beat-to-beat PAP variability: systolic ±1 mmHg, diastolic ±0.5 mmHg
+        self._pap_sys_var = float(np.random.uniform(-1.0, 1.0))
+        self._pap_dia_var = float(np.random.uniform(-0.5, 0.5))
+
+        # Beat-to-beat QRS amplitude variability: ±5%
+        self._qrs_amp_var = float(np.random.uniform(0.95, 1.05))
+
         # Wenckebach: track dropped beats
         if rhythm == RhythmType.AVB2_I:
             self._avb2_counter = (self._avb2_counter + 1) % 4
@@ -752,16 +785,35 @@ class WaveformGenerator:
         s_sigma = (params.s.sigma * qrs_duration_scale) / rr_sec
 
         # Scale P wave to honor state.pr_interval and have constant width in seconds
-        pr_sec = state.pr_interval / 1000.0
-        p_offset_sec = -0.12 - pr_sec
+        if rhythm in (RhythmType.NSR, RhythmType.SINUS_BRADY, RhythmType.SINUS_TACHY):
+            pr_ms = 160.0 + (75.0 - state.heart_rate) / 3.0
+            pr_ms = max(120.0, min(200.0, pr_ms))
+        else:
+            pr_ms = state.pr_interval
+        pr_sec = pr_ms / 1000.0
+
+        if rhythm == RhythmType.AVB2_I:
+            pr_sec += 0.030 * self._avb2_counter
+
+        p_sigma_sec = params.p.sigma if params.p else 0.024
+        p_sigma = p_sigma_sec / rr_sec
+
+        q_sigma_sec = params.q.sigma * qrs_duration_scale
+        qrs_onset_sec = q_offset_sec - 2 * q_sigma_sec
+        p_offset_sec = qrs_onset_sec - pr_sec + 2 * p_sigma_sec
         p_center = c_r + p_offset_sec / rr_sec
-        p_sigma = params.p.sigma / rr_sec if params.p else 0.030 / rr_sec
 
         # Scale T wave to scale with sqrt(rr_sec) (Bazett's formula) and honor state.qt_interval
-        qt_scale = state.qt_interval / 400.0
-        t_offset_sec = (params.t.center - c_r) * qt_scale * np.sqrt(rr_sec)
+        if rhythm in (RhythmType.NSR, RhythmType.SINUS_BRADY, RhythmType.SINUS_TACHY):
+            qt_ms = state.qt_interval * np.sqrt(rr_sec)
+        else:
+            qt_ms = state.qt_interval
+        qt_sec = qt_ms / 1000.0
+        qt_scale = qt_sec / 0.400
+
+        t_offset_sec = (params.t.center - c_r) * qt_scale
         t_center = c_r + t_offset_sec / rr_sec
-        t_sigma = (params.t.sigma * qt_scale * np.sqrt(rr_sec)) / rr_sec
+        t_sigma = (params.t.sigma * qt_scale) / rr_sec
 
         # Adaptive wave visibility: scale P and T amplitudes by rhythm + rate factors
         p_factor, t_factor = get_wave_visibility(rhythm, state.heart_rate)
@@ -792,9 +844,9 @@ class WaveformGenerator:
 
         q_val = _gauss(t, Wave(params.q.amp, q_center, q_sigma))
         r_extra_width_scaled = params.qrs_extra_width / rr_sec
-        r_val = _gauss(t, Wave(params.r.amp * r_amp_mod, c_r, r_sigma + r_extra_width_scaled)) + extra_r_val
+        r_val = _gauss(t, Wave(params.r.amp * r_amp_mod * self._r_amp_factor * self._qrs_amp_var, c_r, r_sigma + r_extra_width_scaled)) + extra_r_val
         s_val = _gauss(t, Wave(params.s.amp, s_center, s_sigma))
-        t_val = _gauss(t, Wave(params.t.amp * t_factor, t_center, t_sigma))
+        t_val = _gauss(t, Wave(params.t.amp * t_factor * self._t_amp_factor, t_center, t_sigma))
 
         # Create scaled params for ST offset computation
         scaled_params = BeatParams(
@@ -819,12 +871,29 @@ class WaveformGenerator:
             return 0.0
         sample = self._sample_for_rhythm(t, params, state, rhythm)
         if rhythm == RhythmType.AFIB:
-            # Fine, continuous 6–9 Hz fibrillatory baseline; no organised P.
-            sample += (
-                0.025 * np.sin(2 * np.pi * 6.3 * self._atrial_clock)
-                + 0.015 * np.sin(2 * np.pi * 8.1 * self._atrial_clock + 0.7)
+            # Chaotic, non-periodic fibrillatory waves (f-waves)
+            t_ac = self._atrial_clock
+            # Sum of phase-modulated sines for physiological randomness (approx 350-600 bpm atrial activations)
+            f_wave = (
+                0.05 * np.sin(2 * np.pi * 5.8 * t_ac + np.sin(2 * np.pi * 0.8 * t_ac))
+                + 0.04 * np.sin(2 * np.pi * 8.3 * t_ac + np.cos(2 * np.pi * 1.1 * t_ac))
+                + 0.03 * np.sin(2 * np.pi * 11.1 * t_ac)
+                + 0.02 * np.sin(2 * np.pi * 14.7 * t_ac)
             )
+            sample += f_wave
             self._atrial_clock += 1.0 / self.fs
+        elif rhythm == RhythmType.AFLUTTER:
+            # Continuous Lead II sawtooth flutter waves
+            # 2:1 conduction means exactly 2 flutter waves per QRS beat (phase t goes 0 -> 1)
+            p_fl = (2.0 * t) % 1.0
+            amp_fl = 0.20
+            if p_fl < 0.15:
+                # Rapid upstroke
+                fl_val = -amp_fl + 2.0 * amp_fl * (p_fl / 0.15)
+            else:
+                # Nearly linear descending limb
+                fl_val = amp_fl - 2.0 * amp_fl * ((p_fl - 0.15) / 0.85)
+            sample += fl_val
         return float(sample)
 
     def _transition_mix(self, transition: RhythmTransition) -> float:

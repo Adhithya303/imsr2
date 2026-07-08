@@ -1894,6 +1894,7 @@ html, body, #root {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+  margin-top: 10px;
 }
 .reading-item {
   background: #0d1117;
@@ -1903,6 +1904,13 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   align-items: center;
+  transition: border-color 0.2s;
+}
+/* Pending-change highlight */
+.reading-item--pending {
+  border-color: #e3a520;
+  background: rgba(227, 165, 32, 0.07);
+  box-shadow: 0 0 6px rgba(227, 165, 32, 0.25);
 }
 .reading-label {
   font-size: 10px;
@@ -1914,6 +1922,86 @@ html, body, #root {
   font-size: 16px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
+}
+
+/* Editable reading input */
+.reading-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #30363d;
+  color: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  text-align: center;
+  padding: 2px 0;
+  outline: none;
+  -moz-appearance: textfield;
+}
+.reading-input::-webkit-outer-spin-button,
+.reading-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.reading-input:focus {
+  border-bottom-color: #58a6ff;
+}
+/* BP dual-input row */
+.reading-item--bp { justify-content: center; }
+.reading-bp-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+}
+.reading-input--bp {
+  width: 44%;
+  font-size: 14px;
+}
+.reading-bp-sep {
+  font-size: 14px;
+  font-weight: 700;
+  color: #8b949e;
+}
+
+/* Initial Readings section header row */
+.scenario-readings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 0;
+}
+.scenario-readings-divider {
+  border-top: 1px solid #30363d;
+  margin: 8px 0 0 0;
+}
+
+/* Apply Changes button */
+.btn-apply-changes {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #161b22;
+  color: #8b949e;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  cursor: not-allowed;
+  opacity: 0.55;
+  transition: all 0.18s;
+  white-space: nowrap;
+}
+.btn-apply-changes--active {
+  background: rgba(227, 165, 32, 0.12);
+  color: #e3a520;
+  border-color: #e3a520;
+  cursor: pointer;
+  opacity: 1;
+}
+.btn-apply-changes--active:hover {
+  background: rgba(227, 165, 32, 0.22);
+  box-shadow: 0 0 8px rgba(227, 165, 32, 0.3);
 }
 
 .scenario-modal {

@@ -35,7 +35,7 @@ export default function ABPTrack({ width = 900, height = 150, paperSpeed = 25 }:
     const bufSize     = bufferRef["ABP"]?.length || 0;
 
     // ── Draw static background grid ──────────────────────────────────────────
-    bgCtx.fillStyle = "#070b0f";
+    bgCtx.fillStyle = "#160a0a";
     bgCtx.fillRect(0, 0, width, height);
 
     bgCtx.beginPath();
@@ -45,7 +45,7 @@ export default function ABPTrack({ width = 900, height = 150, paperSpeed = 25 }:
     for (let y = 0; y <= height; y += GRID_MM_PX) {
       bgCtx.moveTo(0, y); bgCtx.lineTo(width, y);
     }
-    bgCtx.strokeStyle = "rgba(180,0,0,0.12)";
+    bgCtx.strokeStyle = "rgba(255, 0, 0, 0.18)";
     bgCtx.lineWidth = 0.5;
     bgCtx.stroke();
 
@@ -56,7 +56,7 @@ export default function ABPTrack({ width = 900, height = 150, paperSpeed = 25 }:
     for (let y = 0; y <= height; y += GRID_MM_PX * 5) {
       bgCtx.moveTo(0, y); bgCtx.lineTo(width, y);
     }
-    bgCtx.strokeStyle = "rgba(200,20,20,0.25)";
+    bgCtx.strokeStyle = "rgba(255, 20, 20, 0.35)";
     bgCtx.lineWidth = 0.8;
     bgCtx.stroke();
 

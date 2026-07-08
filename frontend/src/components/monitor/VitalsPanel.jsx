@@ -92,6 +92,8 @@ export default function VitalsPanel({ onVitalClick, compact, isStudent, renderPo
               displayVal = item.paired ? "--/--" : "--";
             }
 
+            const showSublabel = !["HR", "SpO₂", "ABP", "PAP", "CO"].includes(item.label);
+
             return (
               <div
                 key={item.key}
@@ -99,9 +101,11 @@ export default function VitalsPanel({ onVitalClick, compact, isStudent, renderPo
                 onClick={() => onVitalClick && onVitalClick(item.key)}
                 style={{ cursor: onVitalClick ? "pointer" : "default" }}
               >
-                <span className="vital-sublabel" style={{ color: group.color }}>
-                  {item.label}
-                </span>
+                {showSublabel && (
+                  <span className="vital-sublabel" style={{ color: group.color }}>
+                    {item.label}
+                  </span>
+                )}
                 <span
                   className={classes[item.size]}
                   style={{ color: group.color }}
