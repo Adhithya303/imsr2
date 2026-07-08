@@ -66,7 +66,7 @@ const COMPACT_SIZE_CLASSES = {
   md: "text-lg font-bold font-mono",
 };
 
-export default function VitalsPanel({ onVitalClick, compact, isStudent }) {
+export default function VitalsPanel({ onVitalClick, compact, isStudent, renderPopover }) {
   const state = useMonitorStore();
   const classes = compact ? COMPACT_SIZE_CLASSES : SIZE_CLASSES;
   const isHidden = isStudent && state.initial_readings_hidden;
@@ -109,6 +109,7 @@ export default function VitalsPanel({ onVitalClick, compact, isStudent }) {
                   {displayVal}
                 </span>
                 <span className="vital-unit">{item.unit}</span>
+                {renderPopover && renderPopover(item.key)}
               </div>
             );
           })}

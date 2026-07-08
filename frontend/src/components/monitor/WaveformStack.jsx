@@ -7,7 +7,7 @@ import ETCO2Track from "./ETCO2Track";
 
 const TRACK_COUNT = 5;
 const TRACK_GAP = 8;
-const MAX_TRACK_HEIGHT = 104;
+const MAX_TRACK_HEIGHT = 250;
 
 export default function WaveformStack({ lead = "II" }) {
   const stackRef = useRef(null);

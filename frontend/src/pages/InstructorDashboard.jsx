@@ -1,43 +1,63 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import socket from "../socket";
 import useMonitorStore from "../store/monitorStore";
 import { connect, disconnect } from "../engine/wsClient";
-import ECGTrack from "../components/monitor/ECGTrack";
-import PlethTrack from "../components/monitor/PlethTrack";
-import ABPTrack from "../components/monitor/ABPTrack";
-import PAPTrack from "../components/monitor/PAPTrack";
-import ETCO2Track from "../components/monitor/ETCO2Track";
 import { useECGStore } from "../store/ecgStore";
+import { getEngineRhythm } from "../utils/rhythms";
+
+import WaveformStack from "../components/monitor/WaveformStack";
 import VitalsPanel from "../components/monitor/VitalsPanel";
 import AlarmBar from "../components/monitor/AlarmBar";
-import UnifiedPanel from "../components/instructor/UnifiedPanel";
-import CardiacControls from "../components/instructor/CardiacControls";
-import SimulationControl from "../components/instructor/SimulationControl";
-import ParameterDialog from "../components/dialogs/ParameterDialog";
-import SetArterialBP from "../components/dialogs/SetArterialBP";
-import SetSpO2 from "../components/dialogs/SetSpO2";
-import SetPeripheralTemp from "../components/dialogs/SetPeripheralTemp";
-import { getEngineRhythm } from "../utils/rhythms";
+import CommunicationPanel from "../components/instructor/CommunicationPanel";
+import TrendsModal from "../components/instructor/TrendsModal";
+import ScenarioDrawer from "../components/instructor/ScenarioDrawer";
+
+import InstructorParameterModal from "../components/dialogs/InstructorParameterModal";
 
 const API = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
-
 export default function InstructorDashboard() {
   const [sessionCode, setSessionCode] = useState("");
-  const [activeTab, setActiveTab] = useState("monitor");
   const [paramSpec, setParamSpec] = useState(null);
   const [openDialog, setOpenDialog] = useState(null);
+  const [toasts, setToasts] = useState([]);
+  
   const setFullState = useMonitorStore((s) => s.setFullState);
   const appendEvent = useMonitorStore((s) => s.appendEvent);
   const setSessionEnded = useMonitorStore((s) => s.setSessionEnded);
   const sessionEnded = useMonitorStore((s) => s.sessionEnded);
   const navigate = useNavigate();
+  
+  // Timer for top bar
+  const [elapsed, setElapsed] = useState(0);
+  const sessionStartRef = useRef(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - sessionStartRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatTime = (s) => {
+    const h = String(Math.floor(s / 3600)).padStart(2, "0");
+    const m = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+    const sec = String(s % 60).padStart(2, "0");
+    return `${h}:${m}:${sec}`;
+  };
 
   // Scenario state
   const [scenario, setScenario] = useState(null);
   const [scenariosList, setScenariosList] = useState([]);
-  const [showScenarioModal, setShowScenarioModal] = useState(false);
+  const [showScenarioModal, setShowScenarioModal] = useState(false); // list of scenarios
+  const [showScenarioDrawer, setShowScenarioDrawer] = useState(false); // patient case details
+
+  // Trends state
+  const [showTrendsModal, setShowTrendsModal] = useState(false);
+
+  // Monitor Lead
+  const [selectedLead, setSelectedLead] = useState("II");
 
   useEffect(() => {
     const token = sessionStorage.getItem("token");
@@ -66,12 +86,27 @@ export default function InstructorDashboard() {
       if (!socket.connected) socket.connect();
       socket.emit("join_session", { session_code: data.session_code, token });
       connect(); // Connect to simman-ecg engine
+      sessionStartRef.current = Date.now();
     };
 
     initSession();
 
     const handleStateUpdate = (state) => setFullState(state);
-    const handleAlarmUpdate = (data) => useMonitorStore.setState({ alarms: data.alarms });
+    const handleAlarmUpdate = (data) => {
+      useMonitorStore.setState({ alarms: data.alarms });
+      
+      // Toast system logic
+      if (data.alarms && data.alarms.length > 0) {
+        data.alarms.forEach(alarm => {
+          const id = Date.now() + Math.random();
+          setToasts(prev => [...prev, { id, message: alarm.message, priority: alarm.priority }]);
+          setTimeout(() => {
+            setToasts(prev => prev.filter(t => t.id !== id));
+          }, 4000); // Auto-dismiss after 4 seconds
+        });
+      }
+    };
+    
     const handleRhythmChange = (data) => setFullState(data);
     const handleSessionEvent = (entry) => appendEvent(entry);
     const handleSessionEnded = () => setSessionEnded();
@@ -117,6 +152,8 @@ export default function InstructorDashboard() {
       if (engineStore.rhythm !== engineRhythm) update.rhythm = engineRhythm;
 
       if (Object.keys(update).length > 0) {
+        update.transfer_time = engineStore.transferTime || 0;
+        update.transfer_fn = engineStore.transferFn || "IMMEDIATE";
         sendCommand(update);
       }
     }
@@ -134,9 +171,7 @@ export default function InstructorDashboard() {
 
   // Scenario socket listeners
   useEffect(() => {
-    const handleScenarioSelected = (data) => {
-      setScenario(data);
-    };
+    const handleScenarioSelected = (data) => setScenario(data);
     const handleScenariosList = (list) => {
       setScenariosList(list);
       setShowScenarioModal(true);
@@ -149,44 +184,20 @@ export default function InstructorDashboard() {
     };
   }, []);
 
-  const requestRandomScenario = () => {
-    socket.emit("request_random_scenario");
-  };
-
-  const openScenarioList = () => {
-    socket.emit("list_scenarios");
-  };
-
+  const requestRandomScenario = () => socket.emit("request_random_scenario");
+  const openScenarioList = () => socket.emit("list_scenarios");
   const selectScenario = (id) => {
     socket.emit("select_scenario", { scenario_id: id });
     setShowScenarioModal(false);
   };
 
-  // Map vital/channel key to dialog type
-  const DIALOG_MAP = {
-    abp: "abp",
-    ABP_sys: "abp",
-    ABP_dia: "abp",
-    spo2: "spo2",
-    SpO2: "spo2",
-    Tperi: "tperi",
-    tperi: "tperi",
-  };
-
-  const handleVitalClick = useCallback((key) => {
-    const mapped = DIALOG_MAP[key] || key;
-    setOpenDialog(mapped);
-  }, []);
-
   const handleLogout = async () => {
-    // End the session before logging out so a new session starts next time
     if (sessionCode) {
       const token = sessionStorage.getItem("token");
       try {
-        await fetch(
-          `${API}/session/${sessionCode}/end`,
-          { method: "POST", headers: { Authorization: `Bearer ${token}` } }
-        );
+        await fetch(`${API}/session/${sessionCode}/end`, { 
+          method: "POST", headers: { Authorization: `Bearer ${token}` } 
+        });
       } catch (e) {
         console.error("Failed to end session on logout", e);
       }
@@ -196,138 +207,88 @@ export default function InstructorDashboard() {
     navigate("/");
   };
 
-  // Helper to render patient details from scenario JSON
-  const renderPatientDetails = (details) => {
-    if (!details) return null;
-    const pd = typeof details === "string" ? JSON.parse(details) : details;
-    return (
-      <div className="scenario-patient-details">
-        <div className="scenario-detail-row">
-          <span className="scenario-detail-label">Name</span>
-          <span className="scenario-detail-value">{pd.patientName}</span>
-        </div>
-        <div className="scenario-detail-row">
-          <span className="scenario-detail-label">Age / Gender</span>
-          <span className="scenario-detail-value">{pd.age} / {pd.gender}</span>
-        </div>
-        <div className="scenario-detail-row">
-          <span className="scenario-detail-label">Blood Group</span>
-          <span className="scenario-detail-value">{pd.bloodGroup}</span>
-        </div>
-        <div className="scenario-detail-row">
-          <span className="scenario-detail-label">Height / Weight</span>
-          <span className="scenario-detail-value">{pd.heightCm}cm / {pd.weightKg}kg</span>
-        </div>
-        <div className="scenario-detail-row">
-          <span className="scenario-detail-label">Chief Complaint</span>
-          <span className="scenario-detail-value">{pd.chiefComplaint}</span>
-        </div>
-        <div className="scenario-detail-row">
-          <span className="scenario-detail-label">Diagnosis</span>
-          <span className="scenario-detail-value">{pd.diagnosis}</span>
-        </div>
-        {pd.medicalHistory && pd.medicalHistory.length > 0 && (
-          <div className="scenario-detail-row">
-            <span className="scenario-detail-label">History</span>
-            <span className="scenario-detail-value">{pd.medicalHistory.join(", ")}</span>
-          </div>
-        )}
-        {pd.allergies && pd.allergies.filter(a => a !== "None").length > 0 && (
-          <div className="scenario-detail-row">
-            <span className="scenario-detail-label">Allergies</span>
-            <span className="scenario-detail-value">{pd.allergies.join(", ")}</span>
-          </div>
-        )}
-        <div className="scenario-detail-row">
-          <span className="scenario-detail-label">Triage</span>
-          <span className="scenario-detail-value" style={{
-            color: pd.triageLevel === "Emergency" ? "var(--alarm-red)" : "var(--alarm-gold)"
-          }}>{pd.triageLevel}</span>
-        </div>
-      </div>
-    );
-  };
-
-  // Helper to render symptoms
-  const renderSymptoms = (symptoms) => {
-    if (!symptoms) return null;
-    const symp = typeof symptoms === "string" ? JSON.parse(symptoms) : symptoms;
-    const activeSymptoms = Object.entries(symp).filter(([, v]) => v === true);
-    if (activeSymptoms.length === 0) return <span style={{ color: "#666" }}>None</span>;
-    return (
-      <div className="scenario-symptoms-list">
-        {activeSymptoms.map(([key]) => (
-          <span key={key} className="scenario-symptom-tag">
-            {key.replace(/([A-Z])/g, " $1").trim()}
-          </span>
-        ))}
-      </div>
-    );
-  };
-
-  // Helper to render initial readings (instructor only)
-  const renderInitialReadings = (readings) => {
-    if (!readings) return null;
-    const rd = typeof readings === "string" ? JSON.parse(readings) : readings;
-    return (
-      <div className="scenario-readings-grid">
-        {rd.heartRate != null && (
-          <div className="reading-item" style={{ color: "#00FF00" }}>
-            <span className="reading-label">HR</span>
-            <span className="reading-value">{rd.heartRate}</span>
-          </div>
-        )}
-        {rd.bloodPressure && (
-          <div className="reading-item" style={{ color: "#FF3333" }}>
-            <span className="reading-label">BP</span>
-            <span className="reading-value">{rd.bloodPressure.systolic}/{rd.bloodPressure.diastolic}</span>
-          </div>
-        )}
-        {rd.spo2 != null && (
-          <div className="reading-item" style={{ color: "#FFFF00" }}>
-            <span className="reading-label">SpO₂</span>
-            <span className="reading-value">{rd.spo2}%</span>
-          </div>
-        )}
-        {rd.respiratoryRate != null && (
-          <div className="reading-item" style={{ color: "#00CCFF" }}>
-            <span className="reading-label">RR</span>
-            <span className="reading-value">{rd.respiratoryRate}</span>
-          </div>
-        )}
-        {rd.etco2 != null && (
-          <div className="reading-item" style={{ color: "#00CCFF" }}>
-            <span className="reading-label">etCO₂</span>
-            <span className="reading-value">{rd.etco2}</span>
-          </div>
-        )}
-        {rd.temperature && (
-          <div className="reading-item" style={{ color: "#CC99FF" }}>
-            <span className="reading-label">Temp</span>
-            <span className="reading-value">{rd.temperature.bloodTemperature}°C</span>
-          </div>
-        )}
-      </div>
-    );
-  };
+  const handleVitalClick = useCallback((key) => {
+    setOpenDialog(key);
+  }, []);
 
   return (
-    <div className="instructor-dashboard">
-      {/* Session ended overlay */}
+    <div className="instructor-dashboard redesign">
+      
       {sessionEnded && (
         <div className="dialog-overlay" style={{ zIndex: 9999 }}>
           <div className="dialog-box" style={{ textAlign: "center", padding: 32 }}>
-            <h2 style={{ color: "var(--alarm-red)", marginBottom: 16 }}>
-              Session Ended
-            </h2>
-            <button className="btn-classic btn-ok" onClick={handleLogout}>
-              Return to Login
-            </button>
+            <h2 style={{ color: "var(--alarm-red)", marginBottom: 16 }}>Session Ended</h2>
+            <button className="btn-classic btn-ok" onClick={handleLogout}>Return to Login</button>
           </div>
         </div>
       )}
 
-      {/* Scenario selection modal */}
+      {/* Top bar */}
+      <div className="instructor-topbar">
+        <div className="topbar-left">
+          <svg width="24" height="24" viewBox="0 0 48 48" fill="none">
+            <rect x="2" y="2" width="44" height="44" rx="4" stroke="#00FF44" strokeWidth="2" fill="none" />
+            <polyline points="8,28 14,28 17,16 20,36 23,24 26,30 29,22 32,28 38,28" stroke="#00FF44" strokeWidth="2" fill="none" />
+          </svg>
+          <span className="topbar-title">AI Simulation Monitor</span>
+          <span className="topbar-role">INSTRUCTOR</span>
+        </div>
+        <div className="topbar-center">
+          <button className="btn-classic btn-sm" onClick={() => setShowTrendsModal(true)}>📈 Trends</button>
+          <button className="btn-classic btn-sm" onClick={() => setShowScenarioDrawer(true)}>📋 Case Details</button>
+          <button className="btn-classic btn-sm" onClick={openScenarioList}>📄 Change Scenario</button>
+          <button className="btn-classic btn-sm" onClick={requestRandomScenario}>🎲 Random</button>
+        </div>
+        <div className="topbar-right">
+          <span className="sim-timer-value" style={{marginRight: 10, color: '#00FF44'}}>{formatTime(elapsed)}</span>
+          <span className="topbar-session">Session: <strong>{sessionCode}</strong></span>
+          <button className="btn-classic btn-sm" onClick={handleLogout} style={{marginLeft: 10}}>End Session</button>
+        </div>
+      </div>
+
+      {/* Main Layout */}
+      <div className="instructor-main-layout">
+
+        {/* Middle: Monitor Area (Waveforms + Vitals) */}
+        <div className="instructor-monitor-area">
+          <AlarmBar />
+          <div className="monitor-main student-monitor-style">
+            <div className="student-vitals-left" style={{ cursor: 'pointer' }}>
+              {/* Using VitalsPanel for familiar look, but clicking opens dialogs */}
+              <VitalsPanel onVitalClick={handleVitalClick} compact={true} isStudent={false} />
+            </div>
+            <div className="student-waveforms-center waveform-container">
+              <WaveformStack lead={selectedLead} onLeadSelect={setSelectedLead} />
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom: Minimal Event Log Footer */}
+        <CommunicationPanel sessionCode={sessionCode} />
+
+      </div>
+
+      {/* Toast Notifications */}
+      <div className="toast-container">
+        {toasts.map(toast => (
+          <div key={toast.id} className={`toast-notification priority-${toast.priority || 'medium'}`}>
+            {toast.message}
+          </div>
+        ))}
+      </div>
+
+      {/* Overlays / Modals */}
+      
+      {showTrendsModal && (
+        <TrendsModal onClose={() => setShowTrendsModal(false)} sessionStartRef={sessionStartRef} />
+      )}
+
+      <ScenarioDrawer 
+        isOpen={showScenarioDrawer} 
+        onClose={() => setShowScenarioDrawer(false)} 
+        scenario={scenario} 
+      />
+
       {showScenarioModal && (
         <div className="dialog-overlay" style={{ zIndex: 10000 }}>
           <div className="scenario-modal">
@@ -339,11 +300,7 @@ export default function InstructorDashboard() {
               {scenariosList.map((sc) => {
                 const pd = typeof sc.patient_details === "string" ? JSON.parse(sc.patient_details) : sc.patient_details;
                 return (
-                  <div
-                    key={sc.id}
-                    className={`scenario-modal-item ${scenario?.id === sc.id ? "scenario-modal-item-active" : ""}`}
-                    onClick={() => selectScenario(sc.id)}
-                  >
+                  <div key={sc.id} className={`scenario-modal-item ${scenario?.id === sc.id ? "scenario-modal-item-active" : ""}`} onClick={() => selectScenario(sc.id)}>
                     <div className="scenario-modal-item-name">{sc.name}</div>
                     <div className="scenario-modal-item-meta">
                       {pd?.age} / {pd?.gender} — {pd?.diagnosis}
@@ -356,96 +313,10 @@ export default function InstructorDashboard() {
         </div>
       )}
 
-      {/* Top bar */}
-      <div className="instructor-topbar">
-        <div className="topbar-left">
-          <svg width="24" height="24" viewBox="0 0 48 48" fill="none">
-            <rect x="2" y="2" width="44" height="44" rx="4" stroke="#00FF44" strokeWidth="2" fill="none" />
-            <polyline points="8,28 14,28 17,16 20,36 23,24 26,30 29,22 32,28 38,28"
-              stroke="#00FF44" strokeWidth="2" fill="none" />
-          </svg>
-          <span className="topbar-title">AI Simulation Monitor</span>
-          <span className="topbar-role">INSTRUCTOR</span>
-        </div>
-        <div className="topbar-right">
-          <span className="topbar-session">
-            Session: <strong>{sessionCode}</strong>
-          </span>
-          <button className="btn-classic btn-sm" onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
-      </div>
-
-      {/* Main layout */}
-      <div className="instructor-body">
-        {/* Left column */}
-        <div className="instructor-left">
-          <SimulationControl sessionCode={sessionCode} />
-        </div>
-
-        {/* Right column — tabbed */}
-        <div className="instructor-right">
-          <UnifiedPanel scenarioContent={
-            <>
-              <div className="scenario-panel-header">
-                <span className="scenario-panel-title">📋 Scenario</span>
-                <div className="scenario-panel-actions">
-                  <button className="btn-classic btn-sm" onClick={requestRandomScenario}>
-                    🎲 Random
-                  </button>
-                  <button className="btn-classic btn-sm" onClick={openScenarioList}>
-                    📄 Choose
-                  </button>
-                </div>
-              </div>
-
-              {scenario ? (
-                <div className="scenario-card-full">
-                  <div className="scenario-card-section">
-                    <h4 className="scenario-card-section-title">Patient Details</h4>
-                    {renderPatientDetails(scenario.patient_details)}
-                  </div>
-                  <div className="scenario-card-section">
-                    <h4 className="scenario-card-section-title">Symptoms</h4>
-                    {renderSymptoms(scenario.symptoms)}
-                  </div>
-                  {scenario.initial_readings && (
-                    <div className="scenario-card-section">
-                      <h4 className="scenario-card-section-title">Initial Readings</h4>
-                      {renderInitialReadings(scenario.initial_readings)}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="scenario-empty">
-                  <p>No scenario loaded. Click <strong>🎲 Random</strong> or <strong>📄 Choose</strong> to select one.</p>
-                </div>
-              )}
-            </>
-          } />
-        </div>
-      </div>
-
-      {/* Specialized dialogs — ABP, SpO2, Tperi */}
-      {openDialog === "abp" && (
-        <SetArterialBP onClose={() => setOpenDialog(null)} />
+      {openDialog && (
+        <InstructorParameterModal field={openDialog} onClose={() => setOpenDialog(null)} />
       )}
-      {openDialog === "spo2" && (
-        <SetSpO2 onClose={() => setOpenDialog(null)} />
-      )}
-      {openDialog === "tperi" && (
-        <SetPeripheralTemp onClose={() => setOpenDialog(null)} />
-      )}
-      {/* Generic dialog for other params */}
-      {openDialog && !["abp", "spo2", "tperi"].includes(openDialog) && paramSpec && (
-        <ParameterDialog
-          field={openDialog}
-          spec={paramSpec}
-          sessionCode={sessionCode}
-          onClose={() => setOpenDialog(null)}
-        />
-      )}
+      
     </div>
   );
 }
