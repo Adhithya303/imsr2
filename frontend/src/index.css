@@ -533,15 +533,24 @@ html, body, #root {
 }
 
 .btn-sm { padding: 3px 10px; font-size: 11px; }
-.btn-ok { background: var(--primary-container); color: var(--primary); border-color: var(--outline); }
-.btn-apply { background: var(--surface-container-highest); }
+.btn-ok  { background: var(--primary-container); color: var(--primary); border-color: var(--outline); }
+.btn-apply {
+  background: #1a7f37;
+  color: #ffffff;
+  border-color: #2da44e;
+  font-weight: 700;
+}
+.btn-apply:hover {
+  background: #2da44e;
+  box-shadow: 0 0 8px rgba(45, 164, 78, 0.45);
+}
 .btn-cancel { background: var(--surface-container); }
 
 /* ══════════════════════════════════════════════════════════════════
    DIALOGS
    ══════════════════════════════════════════════════════════════════ */
 .dialog-overlay {
-  position: fixed; inset: 0; z-index: 1000;
+  position: fixed; inset: 0; z-index: 10000;
   background: rgba(0,0,0,0.7); backdrop-filter: blur(2px);
   display: flex; align-items: center; justify-content: center;
 }
@@ -1912,6 +1921,16 @@ html, body, #root {
   background: rgba(227, 165, 32, 0.07);
   box-shadow: 0 0 6px rgba(227, 165, 32, 0.25);
 }
+/* Clickable card hover — subtle brightening */
+.reading-item:hover {
+  border-color: rgba(88, 166, 255, 0.5);
+  background: rgba(88, 166, 255, 0.06);
+  transition: border-color 0.15s, background 0.15s;
+}
+.reading-item--pending:hover {
+  border-color: #f0b429;
+  background: rgba(227, 165, 32, 0.13);
+}
 .reading-label {
   font-size: 10px;
   color: #8b949e;
@@ -1993,15 +2012,15 @@ html, body, #root {
   white-space: nowrap;
 }
 .btn-apply-changes--active {
-  background: rgba(227, 165, 32, 0.12);
-  color: #e3a520;
-  border-color: #e3a520;
+  background: #1a7f37;
+  color: #ffffff;
+  border-color: #2da44e;
   cursor: pointer;
   opacity: 1;
 }
 .btn-apply-changes--active:hover {
-  background: rgba(227, 165, 32, 0.22);
-  box-shadow: 0 0 8px rgba(227, 165, 32, 0.3);
+  background: #2da44e;
+  box-shadow: 0 0 10px rgba(45, 164, 78, 0.5);
 }
 
 .scenario-modal {
@@ -2187,24 +2206,30 @@ html, body, #root {
 
 
 /* Compact Left Sidebar Overrides */
+.student-vitals-left .vitals-panel {
+  gap: 3px;
+  padding: 5px;
+}
 .student-vitals-left .vital-brick {
-  padding: 4px 6px;
+  padding: 7px 8px;
   gap: 2px;
 }
 .student-vitals-left .vital-brick-label {
-  font-size: 10px;
-  margin-bottom: 2px;
+  font-size: 11px;
+  margin-bottom: 4px;
 }
 .student-vitals-left .vital-value-row {
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+  gap: 6px;
 }
 .student-vitals-left .vital-sublabel {
-  font-size: 9px;
+  font-size: 10px;
+  min-width: 44px;
 }
-.student-vitals-left .text-2xl { font-size: 1.25rem; line-height: 1.2; }
-.student-vitals-left .text-xl { font-size: 1.125rem; line-height: 1.2; }
-.student-vitals-left .text-lg { font-size: 1rem; line-height: 1.2; }
-.student-vitals-left .vital-unit { font-size: 9px; }
+.student-vitals-left .text-2xl { font-size: 1.45rem; line-height: 1.1; }
+.student-vitals-left .text-xl  { font-size: 1.3rem;  line-height: 1.1; }
+.student-vitals-left .text-lg  { font-size: 1.15rem; line-height: 1.2; }
+.student-vitals-left .vital-unit { font-size: 10px; }
 
 
 /* Prevent waveform merging with track labels */
