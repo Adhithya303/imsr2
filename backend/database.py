@@ -21,7 +21,7 @@ ssl_ctx = ssl.create_default_context(
     cafile=os.path.join(
         os.path.dirname(__file__),
         "certs",
-        "ca.pem"
+        "isrgrootx1.pem"
     )
 )
 
