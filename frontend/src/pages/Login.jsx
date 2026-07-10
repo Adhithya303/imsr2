@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const API = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+const API = (
+  import.meta.env.VITE_BACKEND_URL || "http://localhost:8000"
+).replace(/\/+$/, "");
 
 export default function Login() {
   const [username, setUsername] = useState("");
