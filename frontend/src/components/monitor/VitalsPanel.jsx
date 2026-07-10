@@ -60,8 +60,16 @@ const SIZE_CLASSES = {
   md: "text-2xl font-bold font-mono",
 };
 
-export default function VitalsPanel({ onVitalClick }) {
+const COMPACT_SIZE_CLASSES = {
+  xl: "text-2xl font-bold font-mono",
+  lg: "text-xl font-bold font-mono",
+  md: "text-lg font-bold font-mono",
+};
+
+export default function VitalsPanel({ onVitalClick, compact, isStudent, renderPopover }) {
   const state = useMonitorStore();
+  const classes = compact ? COMPACT_SIZE_CLASSES : SIZE_CLASSES;
+  const isHidden = isStudent && state.initial_readings_hidden;
 
   return (
     <div className="vitals-panel">
@@ -72,13 +80,19 @@ export default function VitalsPanel({ onVitalClick }) {
           </div>
           {group.items.map((item) => {
             const val = state[item.key];
-            const displayVal = item.paired
+            let displayVal = item.paired
               ? `${Math.round(val)}/${Math.round(state[item.paired])}`
               : typeof val === "number"
               ? val % 1 === 0
                 ? val
                 : val.toFixed(1)
               : val;
+
+            if (isHidden) {
+              displayVal = item.paired ? "--/--" : "--";
+            }
+
+            const showSublabel = !["HR", "SpO₂", "ABP", "PAP", "CO"].includes(item.label);
 
             return (
               <div
@@ -87,16 +101,19 @@ export default function VitalsPanel({ onVitalClick }) {
                 onClick={() => onVitalClick && onVitalClick(item.key)}
                 style={{ cursor: onVitalClick ? "pointer" : "default" }}
               >
-                <span className="vital-sublabel" style={{ color: group.color }}>
-                  {item.label}
-                </span>
+                {showSublabel && (
+                  <span className="vital-sublabel" style={{ color: group.color }}>
+                    {item.label}
+                  </span>
+                )}
                 <span
-                  className={SIZE_CLASSES[item.size]}
+                  className={classes[item.size]}
                   style={{ color: group.color }}
                 >
                   {displayVal}
                 </span>
                 <span className="vital-unit">{item.unit}</span>
+                {renderPopover && renderPopover(item.key)}
               </div>
             );
           })}

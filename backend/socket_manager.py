@@ -22,6 +22,110 @@ sio = socketio.AsyncServer(
 # Track active transfer tasks: { (session_id, field): asyncio.Task }
 _transfer_tasks: dict = {}
 
+# Scenarios Cache
+SCENARIOS_CACHE = []
+
+def safe_parse_json(val):
+    if isinstance(val, str):
+        try:
+            return json.loads(val)
+        except Exception:
+            return val
+    return val
+
+async def load_scenarios_to_cache():
+    global SCENARIOS_CACHE
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute("SELECT id, name, patient_details, symptoms, initial_readings FROM scenarios")
+            rows = await cur.fetchall()
+            SCENARIOS_CACHE = []
+            for r in rows:
+                SCENARIOS_CACHE.append({
+                    "id": r["id"],
+                    "name": r["name"],
+                    "patient_details": safe_parse_json(r["patient_details"]),
+                    "symptoms": safe_parse_json(r["symptoms"]),
+                    "initial_readings": safe_parse_json(r["initial_readings"])
+                })
+            print(f"[CACHE] Loaded {len(SCENARIOS_CACHE)} scenarios into memory cache.")
+
+def map_scenario_to_state(monitor_values):
+    state_updates = {}
+    if "heartRate" in monitor_values:
+        state_updates["HR"] = float(monitor_values["heartRate"])
+        state_updates["pulse_rate"] = float(monitor_values["heartRate"])
+    if "spo2" in monitor_values:
+        state_updates["SpO2"] = float(monitor_values["spo2"])
+    if "bloodPressure" in monitor_values:
+        bp = monitor_values["bloodPressure"]
+        state_updates["ABP_sys"] = float(bp.get("systolic", 120.0))
+        state_updates["ABP_dia"] = float(bp.get("diastolic", 80.0))
+        state_updates["MAP"] = float(bp.get("map", 93.0))
+        state_updates["NBP_sys"] = float(bp.get("systolic", 120.0))
+        state_updates["NBP_dia"] = float(bp.get("diastolic", 80.0))
+        state_updates["NBP_mean"] = float(bp.get("map", 93.0))
+    if "respiratoryRate" in monitor_values:
+        state_updates["avRR"] = float(monitor_values["respiratoryRate"])
+    if "temperature" in monitor_values:
+        temp = monitor_values["temperature"]
+        state_updates["Tblood"] = float(temp.get("bloodTemperature", 37.0))
+        state_updates["Tperi"] = float(temp.get("peripheralTemperature", 36.5))
+    if "cardiacOutput" in monitor_values:
+        state_updates["CO"] = float(monitor_values["cardiacOutput"])
+    if "pulmonaryArteryPressure" in monitor_values:
+        pap = monitor_values["pulmonaryArteryPressure"]
+        state_updates["PAP_sys"] = float(pap.get("systolic", 20.0))
+        state_updates["PAP_dia"] = float(pap.get("diastolic", 10.0))
+        state_updates["PAP_mean"] = float(pap.get("mean", 13.0))
+    if "pulmonaryCapillaryWedgePressure" in monitor_values:
+        state_updates["PAP_wedge"] = float(monitor_values["pulmonaryCapillaryWedgePressure"])
+    if "etco2" in monitor_values:
+        state_updates["etCO2"] = float(monitor_values["etco2"])
+    if "inco2" in monitor_values:
+        state_updates["inCO2"] = float(monitor_values["inco2"])
+    if "inspiredOxygen" in monitor_values:
+        state_updates["inO2"] = float(monitor_values["inspiredOxygen"])
+    if "endTidalOxygen" in monitor_values:
+        state_updates["etO2"] = float(monitor_values["endTidalOxygen"])
+    if "inspiredNitrousOxide" in monitor_values:
+        state_updates["inN2O"] = float(monitor_values["inspiredNitrousOxide"])
+    if "endTidalNitrousOxide" in monitor_values:
+        state_updates["etN2O"] = float(monitor_values["endTidalNitrousOxide"])
+    if "ecgRhythm" in monitor_values:
+        state_updates["rhythm"] = str(monitor_values["ecgRhythm"])
+    return state_updates
+
+async def emit_scenario_selected(session_code, scenario):
+    student_scenario = dict(scenario)
+    student_scenario.pop("initial_readings", None)
+    
+    sids = []
+    try:
+        room_data = sio.manager.rooms.get("/", {}).get(session_code, {})
+        sids = list(room_data.keys())
+    except Exception:
+        try:
+            participants = sio.manager.get_participants("/", session_code)
+            sids = [p[0] if isinstance(p, tuple) else p for p in participants]
+        except Exception:
+            pass
+            
+    if not sids:
+        await sio.emit("scenario_selected", student_scenario, room=session_code)
+        return
+
+    for sid in sids:
+        try:
+            client_session = await sio.get_session(sid)
+            if client_session and client_session.get("role") == "instructor":
+                await sio.emit("scenario_selected", scenario, to=sid)
+            else:
+                await sio.emit("scenario_selected", student_scenario, to=sid)
+        except Exception:
+            pass
+
 
 def compute_alarms(state: dict) -> list[str]:
     """Compute alarms by checking values against alarm_thresholds."""
@@ -100,6 +204,20 @@ async def join_session(sid, data):
                 state = json.loads(state_row["state_data"])
                 state["started_at"] = session["started_at"].isoformat() if session["started_at"] else datetime.utcnow().isoformat()
                 await sio.emit("state_update", state, to=sid)
+
+            # If session has current_scenario_id, fetch and send it
+            await cur.execute("SELECT current_scenario_id FROM sessions WHERE id = %s", (session["id"],))
+            session_row = await cur.fetchone()
+            if session_row and session_row.get("current_scenario_id"):
+                scenario_id = session_row["current_scenario_id"]
+                scenario = next((s for s in SCENARIOS_CACHE if s["id"] == scenario_id), None)
+                if scenario:
+                    if payload.get("role") == "instructor":
+                        await sio.emit("scenario_selected", scenario, to=sid)
+                    else:
+                        student_scenario = dict(scenario)
+                        student_scenario.pop("initial_readings", None)
+                        await sio.emit("scenario_selected", student_scenario, to=sid)
 
     print(f"[SIO] {payload.get('sub')} joined session {session_code}")
 
@@ -181,6 +299,7 @@ async def update_rhythm(sid, data):
             for k, v in update_fields.items():
                 state[k] = v
                 
+            state["initial_readings_hidden"] = False
             state["alarms"] = compute_alarms(state)
             
             await cur.execute("UPDATE monitor_state SET state_data = %s WHERE session_id = %s", (json.dumps(state), session["id"]))
@@ -234,6 +353,7 @@ async def update_eyes(sid, data):
             for k, v in update_fields.items():
                 state[k] = v
                 
+            state["initial_readings_hidden"] = False
             state["alarms"] = compute_alarms(state)
             await cur.execute("UPDATE monitor_state SET state_data = %s WHERE session_id = %s", (json.dumps(state), session["id"]))
             
@@ -274,6 +394,25 @@ async def add_event_log(sid, data):
 
 
 @sio.event
+async def faculty_comment(sid, data):
+    """Broadcast instructor comment/message to the session room."""
+    session_data = await sio.get_session(sid)
+    if not session_data or session_data.get("role") != "instructor":
+        await sio.emit("error", {"message": "Instructor role required"}, to=sid)
+        return
+
+    session_code = session_data.get("session_code")
+    comment_text = data.get("comment", "")
+    
+    entry = {
+        "from": session_data.get("username", "Instructor"),
+        "comment": comment_text,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+    await sio.emit("faculty_comment", entry, room=session_code)
+
+
+@sio.event
 async def update_alarm_thresholds(sid, data):
     """Instructor updates alarm thresholds."""
     session_data = await sio.get_session(sid)
@@ -298,6 +437,7 @@ async def update_alarm_thresholds(sid, data):
             state = json.loads(state_row["state_data"])
             
             state["alarm_thresholds"] = new_thresholds
+            state["initial_readings_hidden"] = False
             state["alarms"] = compute_alarms(state)
             
             await cur.execute("UPDATE monitor_state SET state_data = %s WHERE session_id = %s", (json.dumps(state), session["id"]))
@@ -306,6 +446,81 @@ async def update_alarm_thresholds(sid, data):
 
     await sio.emit("state_update", state, room=session_code)
     await sio.emit("alarm_update", {"alarms": state["alarms"]}, room=session_code)
+
+
+@sio.event
+async def list_scenarios(sid):
+    session_data = await sio.get_session(sid)
+    if not session_data or session_data.get("role") != "instructor":
+        await sio.emit("error", {"message": "Instructor role required"}, to=sid)
+        return
+    await sio.emit("scenarios_list", SCENARIOS_CACHE, to=sid)
+
+
+@sio.event
+async def select_scenario(sid, data):
+    session_data = await sio.get_session(sid)
+    if not session_data or session_data.get("role") != "instructor":
+        await sio.emit("error", {"message": "Instructor role required"}, to=sid)
+        return
+    
+    session_code = session_data.get("session_code")
+    scenario_id = data.get("scenario_id")
+    if not scenario_id:
+        await sio.emit("error", {"message": "Missing scenario_id"}, to=sid)
+        return
+    
+    scenario = next((s for s in SCENARIOS_CACHE if s["id"] == scenario_id), None)
+    if not scenario:
+        await sio.emit("error", {"message": f"Scenario {scenario_id} not found"}, to=sid)
+        return
+    
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute("SELECT id, started_at FROM sessions WHERE session_code = %s", (session_code,))
+            session = await cur.fetchone()
+            if not session:
+                return
+            
+            await cur.execute("UPDATE sessions SET current_scenario_id = %s WHERE id = %s", (scenario_id, session["id"]))
+            
+            await cur.execute("SELECT state_data FROM monitor_state WHERE session_id = %s", (session["id"],))
+            state_row = await cur.fetchone()
+            state = json.loads(state_row["state_data"])
+            
+            updates = map_scenario_to_state(scenario["initial_readings"])
+            for k, v in updates.items():
+                state[k] = v
+            
+            state["initial_readings_hidden"] = True
+            state["last_updated"] = datetime.utcnow().isoformat()
+            state["updated_by"] = session_data.get("username", "")
+            state["alarms"] = compute_alarms(state)
+            
+            await cur.execute("UPDATE monitor_state SET state_data = %s WHERE session_id = %s", (json.dumps(state), session["id"]))
+            
+            state["started_at"] = session["started_at"].isoformat() if session["started_at"] else datetime.utcnow().isoformat()
+            
+    await sio.emit("state_update", state, room=session_code)
+    await sio.emit("alarm_update", {"alarms": state["alarms"]}, room=session_code)
+    await emit_scenario_selected(session_code, scenario)
+
+
+@sio.event
+async def request_random_scenario(sid):
+    session_data = await sio.get_session(sid)
+    if not session_data or session_data.get("role") != "instructor":
+        await sio.emit("error", {"message": "Instructor role required"}, to=sid)
+        return
+    
+    if not SCENARIOS_CACHE:
+        await sio.emit("error", {"message": "No scenarios loaded in cache"}, to=sid)
+        return
+    
+    import random
+    scenario = random.choice(SCENARIOS_CACHE)
+    await select_scenario(sid, {"scenario_id": scenario["id"]})
 
 
 # ── Helpers ───────────────────────────────────────────────────────
@@ -320,6 +535,7 @@ async def _apply_update(session, session_code, field, value, username):
             state = json.loads(state_row["state_data"])
 
             state[field] = value
+            state["initial_readings_hidden"] = False
             state["last_updated"] = datetime.utcnow().isoformat()
             state["updated_by"] = username
 

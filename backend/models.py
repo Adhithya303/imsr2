@@ -126,6 +126,7 @@ DEFAULT_MONITOR_STATE = {
     },
     "last_updated": None,
     "updated_by": "",
+    "initial_readings_hidden": False,
 }
 
 

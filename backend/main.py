@@ -3,12 +3,13 @@
 import random
 import string
 import json
+import traceback
 from datetime import datetime
 from contextlib import asynccontextmanager
 
 import socketio
 import aiomysql
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from auth import (
@@ -29,7 +30,10 @@ from models import (
     DEFAULT_MONITOR_STATE,
     PARAMETER_SPEC,
 )
-from socket_manager import sio, emit_session_ended
+from ecg_state import ECGStateUpdate
+from socket_manager import sio, emit_session_ended, load_scenarios_to_cache
+from simman_engine.state_machine import engine
+from simman_engine.rhythm_intelligence import intelligence_payload
 
 
 # ── Lifespan ──────────────────────────────────────────────────────
@@ -37,6 +41,8 @@ from socket_manager import sio, emit_session_ended
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await load_scenarios_to_cache()
+    await engine.start()
     
     pool = await get_db_pool()
     async with pool.acquire() as conn:
@@ -56,6 +62,8 @@ async def lifespan(app: FastAPI):
             res = await cur.fetchone()
             print(f"[INIT] Users in database: {res['count']}")
     yield
+    await engine.stop()
+
 
 
 # ── App Setup ─────────────────────────────────────────────────────
@@ -255,6 +263,76 @@ async def end_session(session_code: str, user: dict = Depends(require_instructor
     await emit_session_ended(session_code)
 
     return {"message": "Session ended"}
+
+
+# ── WebSocket (SimMan ECG Engine) ─────────────────────────────────
+
+def _state_snapshot() -> str:
+    """Return current engine state as a JSON STATE_SNAPSHOT string."""
+    return json.dumps({
+        "type": "STATE_SNAPSHOT",
+        "payload": engine.state.model_dump(mode="json"),
+    })
+
+@api_app.websocket("/ws/ecg")
+async def ws_ecg(websocket: WebSocket):
+    await websocket.accept()
+    print(f"[WS] Client connected: {websocket.client}")
+
+    async def send_fn(data: bytes) -> None:
+        await websocket.send_bytes(data)
+
+    engine.add_client(send_fn)
+    await websocket.send_text(_state_snapshot())
+
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError as e:
+                print(f"[WS] Bad JSON from client: {e}")
+                continue
+
+            msg_type = msg.get("type")
+
+            if msg_type == "SET_STATE":
+                payload = msg.get("payload", {})
+                try:
+                    update = ECGStateUpdate.model_validate(payload)
+                except Exception as e:
+                    print(f"[WS] SET_STATE validation error: {e}")
+                    await websocket.send_text(json.dumps({"type": "ERROR", "message": f"Validation error: {e}"}))
+                    continue
+
+                try:
+                    await engine.apply_command(update)
+                except Exception as e:
+                    print(f"[WS] apply_command error: {e}")
+                    traceback.print_exc()
+                    continue
+
+                await websocket.send_text(_state_snapshot())
+                
+                await websocket.send_text(json.dumps({
+                    "type": "ECG_INTELLIGENCE",
+                    "payload": intelligence_payload(engine.state.rhythm),
+                }))
+
+            elif msg_type == "GET_STATE":
+                await websocket.send_text(_state_snapshot())
+            elif msg_type == "PING":
+                await websocket.send_text(json.dumps({"type": "PONG"}))
+            else:
+                print(f"[WS] Unknown message type: {msg_type}")
+
+    except WebSocketDisconnect:
+        print(f"[WS] Client disconnected: {websocket.client}")
+    except Exception as e:
+        print(f"[WS] Unexpected crash: {e}")
+        traceback.print_exc()
+    finally:
+        engine.remove_client(send_fn)
 
 
 # ── Mount Socket.IO onto ASGI ─────────────────────────────────────
