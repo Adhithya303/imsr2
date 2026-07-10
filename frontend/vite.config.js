@@ -7,11 +7,11 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      "/auth": "http://localhost:8000",
-      "/session": "http://localhost:8000",
-      "/meta": "http://localhost:8000",
+      "/auth": "https://imsr2-a3xs.onrender.com/",
+      "/session": "https://imsr2-a3xs.onrender.com/",
+      "/meta": "https://imsr2-a3xs.onrender.com/",
       "/socket.io": {
-        target: "http://localhost:8000",
+        target: "https://imsr2-a3xs.onrender.com/",
         ws: true,
       },
     },
