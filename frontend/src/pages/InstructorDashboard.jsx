@@ -15,7 +15,7 @@ import ScenarioDrawer from "../components/instructor/ScenarioDrawer";
 
 import InstructorParameterModal from "../components/dialogs/InstructorParameterModal";
 
-const API = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+const API = import.meta.env.VITE_BACKEND_URL || "https://imsr2-a3xs.onrender.com";
 
 export default function InstructorDashboard() {
   const [sessionCode, setSessionCode] = useState("");

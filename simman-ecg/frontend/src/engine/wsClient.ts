@@ -7,7 +7,7 @@ import type { ECGStateUpdate } from "../types/ecgState";
 import type { ServerMsg } from "../types/wsProtocol";
 import { useECGStore } from "../store/ecgStore";
 
-const WS_URL = "ws://127.0.0.1:8000/ws/ecg";
+const WS_URL = (import.meta.env.VITE_WS_URL || import.meta.env.VITE_BACKEND_URL || "https://imsr2-a3xs.onrender.com").replace(/\/$/, "").replace(/^https:\/\//, "wss://").replace(/^http:\/\//, "ws://") + "/ws/ecg";
 const RECONNECT_DELAY_MS = 2000;
 
 let ws: WebSocket | null = null;

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const API = (
-  import.meta.env.VITE_BACKEND_URL || "http://localhost:8000"
+  import.meta.env.VITE_BACKEND_URL || "https://imsr2-a3xs.onrender.com"
 ).replace(/\/+$/, "");
 
 export default function Login() {
