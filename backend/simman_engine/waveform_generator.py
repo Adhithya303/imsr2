@@ -83,7 +83,25 @@ def get_beat_params(state: ECGState, rhythm: RhythmType | None = None) -> BeatPa
         r = RhythmType.NSR
 
     # ── Pure morphology rhythms ──────────────────────────────────────────────
-    if r in (RhythmType.NSR, RhythmType.PAC, RhythmType.SINUS_BRADY, RhythmType.SINUS_TACHY, RhythmType.AVB1):
+    if r in (RhythmType.NSR, RhythmType.PAC):
+        return _nsr()
+
+    if r == RhythmType.SINUS_BRADY:
+        # Slower sinus activation makes the atrial and repolarisation waves more distinct.
+        bp = _nsr()
+        bp.p = Wave(0.17, 0.12, 0.026)
+        bp.t = Wave(0.34, 0.62, 0.055)
+        return bp
+
+    if r == RhythmType.SINUS_TACHY:
+        # Rate compression brings the P wave closer to the preceding T wave.
+        bp = _nsr()
+        bp.p = Wave(0.12, 0.11, 0.025)
+        bp.t = Wave(0.24, 0.61, 0.050)
+        return bp
+
+    if r == RhythmType.AVB1:
+        # First-degree block keeps the same morphology, but the engine handles the prolonged PR.
         return _nsr()
 
     if r == RhythmType.PEA:
