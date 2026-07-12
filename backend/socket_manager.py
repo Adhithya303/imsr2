@@ -196,6 +196,12 @@ async def join_session(sid, data):
                 "session_code": session_code,
             })
 
+            # Confirm join to the client (frontend listens for this)
+            await sio.emit("join_confirmed", {
+                "session_code": session_code,
+                "role": payload.get("role"),
+            }, to=sid)
+
             # Send current state with started_at
             await cur.execute("SELECT state_data FROM monitor_state WHERE session_id = %s", (session["id"],))
             state_row = await cur.fetchone()
